@@ -26,7 +26,7 @@
     ]
   },
   "acrescimos": {
-    "contato": "Se a família já escreveu \"Quero agendar uma consulta com o Dr. Raphael\", o interesse está confirmado: faça direto o recuo.",
+    "contato": "Se a família já escreveu \"Quero agendar uma consulta com o Dr. Raphael\", o interesse está confirmado: faça direto o recuo.\nSe a primeira mensagem da família já traz uma pergunta (online, diagnóstico, laudo, desconto, retorno…), responda a pergunta primeiro, com o sentido da frase de referência das Objeções, e só depois se apresente ou peça licença para as perguntas. Nunca ignore a pergunta da família.",
     "fechamento": "Os 2 horários do passo 5 vêm no bloco HORARIOS: ofereça só esses, do jeito que estão escritos. Sem o bloco, não fale de data.",
     "reserva": "O horário escolhido aparece no bloco HORARIOS como segurado para a família. Cartão: use a passagem quer_cartao. Comprovante: use a passagem enviou_comprovante.",
     "decidido": "Se a família ainda não ouviu o valor, informe o valor numa frase (R$ 1.200, presencial ou online), sem comparação e sem a pergunta de condição. Ofereça os 2 horários do bloco HORARIOS.",
