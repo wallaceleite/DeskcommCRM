@@ -13,6 +13,7 @@ import {
   limiteDoTurno,
   perguntouPreco,
   semelhanca,
+  trechoExisteNaMensagem,
   suspeitasDoNuncaDiga,
   vereditoSemModelo,
 } from "@/lib/agent-engine/def/revisor";
@@ -422,6 +423,24 @@ describe("passagem: a família ouve a mensagem do roteiro, nunca o aviso genéri
     expect(JSON.stringify(t.passagens[0])).toContain("Método DEF, etapa contato");
   });
 
+  it("a trava de promessa do núcleo veta a 1ª: o código tenta de novo (o núcleo abre o caso)", async () => {
+    const t = await turnoDeTeste({});
+    let tentativas = 0;
+    const enviados: string[] = [];
+    const tools = t.turno.envolverFerramentas({
+      send_message: {
+        execute: async (i: { body: string }) =>
+          ++tentativas === 1
+            ? { ok: false, error: { code: "case_promise_without_case" } }
+            : (enviados.push(i.body), { ok: true, message_id: "m1" }),
+      },
+      request_human_handoff: { execute: async () => ({ ok: true }) },
+    } as never) as unknown as Record<string, { execute: (i: unknown, o: unknown) => Promise<unknown> }>;
+    await tools.request_human_handoff!.execute({}, {});
+    expect(tentativas).toBe(2);
+    expect(enviados).toHaveLength(1);
+  });
+
   it("se o modelo já falou, o código não repete", async () => {
     const t = await turnoDeTeste({});
     await t.tools.send_message!.execute({ body: "Claro, vou chamar alguém da equipe, combinado?" }, {});
@@ -484,6 +503,23 @@ describe("P1.1: a ficha soma as listas", () => {
       { descricao: "Convênio", resolvida: false },
     ]);
     expect(r.acompanhamento_atual).toEqual(["fono", "psicologo"]);
+  });
+});
+
+describe("bateria, rodada 1: o revisor de modelo inventava violação", () => {
+  it("reprovação com trecho que não está na mensagem não vale", () => {
+    const body = "Para irmãos a gente tem 10% de desconto em cada consulta. Quer que eu veja dois horários seguidos?";
+    expect(trechoExisteNaMensagem("10% de desconto em cada consulta", body)).toBe(true);
+    expect(trechoExisteNaMensagem("“desconto à vista… no Pix”", body)).toBe(false);
+    expect(trechoExisteNaMensagem("Para irmãos a gente tem... horários seguidos", body)).toBe(true);
+    expect(trechoExisteNaMensagem("fala com o doutor por 3 meses", body)).toBe(false);
+  });
+
+  it("a passagem do roteiro com o nome trocado continua sendo o roteiro", () => {
+    const roteiro = "[nome], isso precisa de atenção agora: procure imediatamente um serviço de urgência, sem aguardar resposta por aqui. Já avisei a nossa equipe.";
+    const enviada = "Juliana, isso precisa de atenção agora: procure imediatamente um serviço de urgência, sem aguardar resposta por aqui. Já avisei a nossa equipe.";
+    expect(semelhanca(enviada, roteiro)).toBeGreaterThanOrEqual(0.75);
+    expect(semelhanca("Qual a idade dele?", roteiro)).toBeLessThan(0.75);
   });
 });
 

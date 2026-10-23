@@ -36,6 +36,7 @@ import { decidirEtapaDef, equipeNoHorario, type DecisaoDef } from './roteador';
 import {
   checagensDeCodigo,
   contarPerguntas,
+  semelhanca,
   eAvisoDePagamento,
   limiteDoTurno,
   perguntouPreco,
@@ -52,6 +53,9 @@ export const SILENCIO_DA_RETOMADA_MS = 24 * 60 * 60 * 1000;
 
 /** Vetos do revisor no mesmo turno antes de passar para a equipe. */
 export const MAX_VETOS_DO_REVISOR_DEF = 2;
+
+/** A partir daqui a mensagem é o texto do roteiro (com o nome trocado). */
+export const SEMELHANCA_COM_O_ROTEIRO = 0.75;
 
 export interface AgenteDoTurnoDef {
   agentId: string;
@@ -407,6 +411,14 @@ function envolverComRevisor(
 ): RevisorDoTurno {
   const turno = randomUUID();
   const enviados: string[] = [];
+  // O texto do próprio roteiro (passagens e frases da Matriz) já é aprovado: o
+  // revisor de MODELO não o julga de novo — a bateria mediu o modelo barato
+  // vetando a frase do manual. As checagens de código continuam valendo.
+  const textosDoRoteiro = [
+    ...ctx.roteiro.passagens.map((p) => p.mensagem),
+    ...[...Object.values(ctx.roteiro.etapas), ...Object.values(ctx.roteiro.modos)].flatMap((b) => b?.frases.map((f) => f.texto) ?? []),
+  ];
+  const doRoteiro = (body: string) => textosDoRoteiro.some((t) => semelhanca(body, t) >= SEMELHANCA_COM_O_ROTEIRO);
   const registroDeVetos: ResumoDoTurnoDef['vetos'] = [];
   let vetos = 0;
   let encerrado = false;
@@ -488,6 +500,21 @@ function envolverComRevisor(
     }
   };
 
+  /**
+   * Envio que é a porta da equipe (espera, passagem). Promete gente, então a
+   * trava de promessa do núcleo veta a 1ª tentativa sem caso aberto e, na 2ª,
+   * abre o caso sozinha e deixa sair (`case_promise_autofallback`). Uma
+   * repetição, e só por esse motivo.
+   */
+  const enviarPromessaDeEquipe = async (body: string, options: unknown) => {
+    let r = await enviarDeVerdade({ body }, options);
+    if ((r as { error?: { code?: unknown } })?.error?.code === 'case_promise_without_case') {
+      r = await enviarDeVerdade({ body }, options);
+    }
+    if ((r as { ok?: unknown })?.ok === true) registrarEnvio(body, r);
+    return r;
+  };
+
   /** A passagem do roteiro ANTES de chamar a equipe — nunca o aviso genérico. */
   const passagemDoTurno = (): PassagemDef | null => {
     const p = ctx.decisao.passagem;
@@ -546,6 +573,9 @@ function envolverComRevisor(
         motivo: vetosDeCodigo.map((v) => v.motivo).join(' '),
         origem: 'codigo',
       };
+    } else if (ctx.decisao.modo === 'urgencia' || doRoteiro(body)) {
+      // Urgência: a mensagem TEM de sair; e texto do roteiro já foi aprovado.
+      veredito = { aprovada: true, regras: [], motivo: '', origem: 'codigo' };
     } else if (ctx.roteiro.revisor.ativo) {
       veredito = await revisarComModelo(
         ctx.pool,
@@ -573,9 +603,10 @@ function envolverComRevisor(
       }
       // Segunda reprovação: a família recebe o aviso de espera e a equipe assume.
       encerrado = true;
-      const espera = mensagemDeEspera(ctx.roteiro, ctx.nome);
-      const aviso = await enviarDeVerdade({ body: espera }, options);
-      if ((aviso as { ok?: unknown })?.ok === true) registrarEnvio(espera, aviso);
+      // Na urgência a família recebe a orientação de urgência, nunca "já te respondo".
+      const urgencia = ctx.decisao.modo === 'urgencia' ? ctx.decisao.passagem : null;
+      const textoDaUrgencia = urgencia ? prepararMensagemDePassagem(urgencia.mensagem, ctx.nome, ctx.ficha) : null;
+      const aviso = await enviarPromessaDeEquipe(textoDaUrgencia ?? mensagemDeEspera(ctx.roteiro, ctx.nome), options);
       await passarParaEquipe({}, options, 'O revisor de compliance reprovou a resposta duas vezes neste turno.');
       return {
         ok: false,
@@ -614,10 +645,7 @@ function envolverComRevisor(
       const texto =
         (p !== null ? prepararMensagemDePassagem(p.mensagem, ctx.nome, ctx.ficha) : null) ??
         (padrao !== undefined ? prepararMensagemDePassagem(padrao.mensagem, ctx.nome, ctx.ficha) : null);
-      if (texto !== null) {
-        const r = await enviarDeVerdade({ body: texto }, options);
-        if ((r as { ok?: unknown })?.ok === true) registrarEnvio(texto, r);
-      }
+      if (texto !== null) await enviarPromessaDeEquipe(texto, options);
     }
     encerrado = true;
     return passarParaEquipe(input, options);

@@ -33,6 +33,8 @@ export interface VereditoDef {
   aprovada: boolean;
   regras: string[];
   motivo: string;
+  /** O trecho que o modelo diz violar (vazio quando não citou). */
+  trecho?: string;
   /**
    * Quem decidiu: o código, o modelo, ou ninguém — o modelo falhou e soltou
    * (`falhou_aberto`), ou falhou com expressão suspeita no texto e segurou
@@ -262,6 +264,7 @@ function montarPedidoDoRevisor(roteiro: RoteiroDef, etapa: EtapaDef, body: strin
     '',
     `MENSAGEM:\n${body}`,
     '',
+    'Só reprove copiando em "trecho" as palavras EXATAS da mensagem que violam a regra. Sem trecho exato que viole claramente, aprove. Dizer com outras palavras um fato da BASE não viola a regra 9.',
     'Responda só com JSON: {"aprovada": true|false, "regras_violadas": [números], "trecho": "...", "como_corrigir": "..."}',
   ].join('\n');
 }
@@ -276,8 +279,24 @@ export function lerVereditoDoRevisor(texto: string): VereditoDef | null {
     aprovada: obj.aprovada,
     regras,
     motivo: [trecho ? `Trecho: "${trecho}".` : '', comoCorrigir].filter(Boolean).join(' '),
+    trecho,
     origem: 'modelo',
   };
+}
+
+/**
+ * O modelo reprovou citando um trecho que NÃO está na mensagem: é invenção do
+ * revisor, e a reprovação não vale (medido na bateria: o modelo barato vetava
+ * frase do próprio roteiro citando regra e trecho que não existiam).
+ */
+export function trechoExisteNaMensagem(trecho: string, body: string): boolean {
+  const limpar = (t: string) => semAcento(t).replace(/["'“”‘’«»]/g, '').replace(/\s+/g, ' ').trim();
+  const corpo = limpar(body);
+  const pedacos = limpar(trecho)
+    .split(/\.\.\.|…/)
+    .map((p) => p.trim().replace(/^[.,;:!?\s]+|[.,;:!?\s]+$/g, ''))
+    .filter((p) => p.length >= 6);
+  return pedacos.length > 0 && pedacos.every((p) => corpo.includes(p));
 }
 
 export async function revisarComModelo(
@@ -313,6 +332,10 @@ export async function revisarComModelo(
       { registry: deps.registry, log: deps.log },
     );
     const veredito = lerVereditoDoRevisor(call.result.text);
+    if (veredito !== null && !veredito.aprovada && veredito.trecho && !trechoExisteNaMensagem(veredito.trecho, args.body)) {
+      deps.log.warn('def: revisor citou trecho que não está na mensagem — reprovação descartada', { regras: veredito.regras });
+      return { aprovada: true, regras: [], motivo: '', origem: 'modelo' };
+    }
     if (veredito !== null) return veredito;
     deps.log.warn('def: revisor sem JSON legível');
   } catch (err) {
