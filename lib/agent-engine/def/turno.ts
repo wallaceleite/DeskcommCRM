@@ -418,7 +418,16 @@ function envolverComRevisor(
     ...ctx.roteiro.passagens.map((p) => p.mensagem),
     ...[...Object.values(ctx.roteiro.etapas), ...Object.values(ctx.roteiro.modos)].flatMap((b) => b?.frases.map((f) => f.texto) ?? []),
   ];
-  const doRoteiro = (body: string) => textosDoRoteiro.some((t) => semelhanca(body, t) >= SEMELHANCA_COM_O_ROTEIRO);
+  const pareceORoteiro = (trecho: string) => textosDoRoteiro.some((t) => semelhanca(trecho, t) >= SEMELHANCA_COM_O_ROTEIRO);
+  // Por parágrafo: a saudação (que também é frase da Matriz) + a resposta do
+  // manual continuam sendo texto do roteiro.
+  const doRoteiro = (body: string) =>
+    pareceORoteiro(body) ||
+    body
+      .split(/\n\s*\n/)
+      .map((p) => p.trim())
+      .filter((p) => p !== '')
+      .every(pareceORoteiro);
   const registroDeVetos: ResumoDoTurnoDef['vetos'] = [];
   let vetos = 0;
   let encerrado = false;
@@ -622,6 +631,9 @@ function envolverComRevisor(
     const resultado = await enviarDeVerdade(input, options);
     if ((resultado as { ok?: unknown })?.ok !== true) return resultado;
     registrarEnvio(body, resultado);
+    // "Reescreve uma vez; reprovou de novo, passa" (documento 05) é por MENSAGEM:
+    // a que saiu zera a conta, e um veto na próxima não soma com o da anterior.
+    vetos = 0;
     // A última mensagem do turno termina em pergunta: sem pergunta aqui, pede a
     // segunda (curta, com a pergunta). A 1ª de duas pode ser só o valor (P0.5).
     const precisaDePergunta =

@@ -404,6 +404,15 @@ describe("P0.4: o modelo tenta 4 envios", () => {
     expect(r.def_aviso).toMatch(/segunda e última/);
   });
 
+  it("veto numa mensagem e veto na seguinte (com uma enviada no meio) não passam para a equipe", async () => {
+    const t = await turnoDeTeste({});
+    await t.tools.send_message!.execute({ body: "A senhora prefere manhã?" }, {});
+    await t.tools.send_message!.execute({ body: "A avaliação começa antes da consulta." }, {});
+    const r = await t.tools.send_message!.execute({ body: "A senhora prefere tarde?" }, {});
+    expect(r.error?.code).toBe("def_revisor");
+    expect(t.passagens).toHaveLength(0);
+  });
+
   it("dois vetos de conteúdo ainda passam para a equipe com a mensagem de espera", async () => {
     const t = await turnoDeTeste({});
     await t.tools.send_message!.execute({ body: "A senhora prefere manhã?" }, {});

@@ -52,7 +52,7 @@
     }
   ],
   "extrator_extras": [
-    "intenção quer_humano: só quando a família pede para falar AGORA com uma pessoa ou atendente. Perguntar se depois da consulta dá para falar com o doutor NÃO é quer_humano: é dúvida sobre a assistência de 90 dias.",
+    "intenção quer_humano: só quando a família pede para falar AGORA com uma pessoa ou atendente. Perguntar se depois da consulta dá para falar com o doutor NÃO é quer_humano nem pergunta_fora_da_base: está na base (assistência de 90 dias); não marque intenção.",
     "intenção pergunta_se_e_ia: a família pergunta se está falando com robô, IA, assistente virtual ou pessoa de verdade. Isso NÃO é quer_humano.",
     "intenção pergunta_clinica: sintoma, exame, laudo de outro profissional, remédio, dose, canabidiol, \"precisa de neuro?\".",
     "intenção pergunta_fora_da_base: retorno, consultas a cada 6 meses, encaminhamento, endereço de Aracruz, tipos de laudo.",
@@ -60,7 +60,8 @@
     "intenção formato_laudo: pede laudo em formato específico (INSS) ou prazo de emissão.",
     "perfil decidido: a frase do botão do anúncio (\"Quero agendar uma consulta com o Dr. Raphael\") sozinha NÃO é decidido, porque é o texto padrão de todo lead. Decidido precisa de um sinal a mais: indicação, já sabe o valor, pede data ou horário, ou tem prazo.",
     "intenção dermatologia: cita a Dra. Manoela, dermatologista, pele ou procedimento estético.",
-    "intenção pergunta_clinica NÃO inclui dúvida sobre como a consulta funciona (se já sai com diagnóstico, se dá laudo, se sai com receita, se o online é igual ao presencial, se os testes são avaliação neuropsicológica): essas a equipe responde com a frase de referência das Objeções."
+    "intenção pergunta_clinica NÃO inclui dúvida sobre como a consulta funciona (se já sai com diagnóstico, se dá laudo, se sai com receita, se o online é igual ao presencial, se os testes são avaliação neuropsicológica): essas a equipe responde com a frase de referência das Objeções.",
+    "Pergunta sobre desconto (irmãos, à vista, Pix) NÃO é pergunta_preco: é objeção — objecao_atual \"São dois filhos\" ou \"Desconto à vista\"."
   ],
   "revisor": {
     "base_extra": "Identidade: a Ana Paula é a assistente virtual da equipe do Dr. Raphael e acompanha o atendimento junto com a equipe.\nAssistência de 90 dias: citar o canal de assistência por até 90 dias, em horário comercial, para as situações relacionadas à conduta estabelecida (efeito da medicação prescrita, envio de exames pedidos), conforme o protocolo, é a redação do manual e não viola a regra 7. Viola quem promete falar com o doutor à vontade ou acompanhamento ilimitado.",
