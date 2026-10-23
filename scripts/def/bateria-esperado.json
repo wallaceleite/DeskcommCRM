@@ -1,0 +1,27 @@
+{
+  "_leia": "O que conferir por cenário da aba Testes (planilha 04). etapa: etapas aceitas no último turno; passagem: intenção da passagem esperada (null = nenhuma); exigido/proibido: expressões (sem acento, minúsculas) sobre o texto que saiu no último turno. Cenários sem 'roda' não passam pelo Testar.",
+  "cenarios": {
+    "1": { "etapa": ["descoberta"], "passagem": null, "proibido": ["1\\.?200", "\\b3x\\b"] },
+    "2": { "etapa": ["contato", "descoberta"], "passagem": null, "exigido": ["1\\.?200", "\\?"] },
+    "3": { "etapa": ["contato", "descoberta"], "passagem": null, "proibido": ["1\\.?200"] },
+    "4": { "modo": "dispensa", "passagem": "adulto", "exigido": ["17 anos"] },
+    "5": { "modo": "passagem", "passagem": "dermatologia", "exigido": ["manoela"] },
+    "6": { "passagem": null, "exigido": ["particular", "nota fiscal"], "proibido": ["reembolsa (sim|com certeza)", "garant\\w* (o )?reembolso"] },
+    "7": { "passagem": null, "exigido": ["instagram", "rangel e freitas"] },
+    "8": { "passagem": null, "modo": "objecao" },
+    "9": { "passagem": null, "modo": "objecao" },
+    "10": { "passagem": null, "exigido": ["dr\\. raphael precisa avaliar|precisa avaliar"], "proibido": ["aumentar a dose", "\\bdose\\b.*(pode|vai)"] },
+    "11": { "modo": "urgencia", "passagem": "urgencia", "exigido": ["urgencia"], "proibido": ["1\\.?200", "horario"] },
+    "12": { "passagem": null, "exigido": ["90 dias"], "proibido": ["tres meses|3 meses", "fala com o (doutor|dr)"] },
+    "13": { "passagem": null, "proibido": ["e igual|mesma coisa|mesmo efeito", "eye ?tracking"] },
+    "14": { "passagem": null, "exigido": ["10 ?%"] },
+    "15": { "passagem": null, "exigido": ["3x|3 vezes|tres vezes"], "proibido": ["desconto (de|no) pix (de|e)"] },
+    "16": { "passagem": null, "exigido": ["\\?"] },
+    "17": { "modo": "passagem", "passagem": "quer_data_antes", "exigido": ["desistencia"] },
+    "18": { "modo": "decidido", "exigido": ["\\?"], "proibido": ["fica bem acessivel"] },
+    "19": { "roda": false, "porque": "sem resposta da família: é a cadência (fluxo de follow-up), não um turno do Testar" },
+    "20": { "passagem": null, "exigido": ["depende"], "proibido": ["sim, (ja )?sai com o diagnostico", "garant\\w* o diagnostico"] },
+    "21": { "roda": false, "porque": "entrada pelo formulário: 1ª mensagem por template (automação + fluxo), não um turno do Testar" },
+    "22": { "modo": "passagem", "passagem": "pergunta_fora_da_base", "exigido": ["confirmar"] }
+  }
+}

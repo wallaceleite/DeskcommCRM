@@ -110,6 +110,16 @@ export function faltamNaEtapa(etapa: EtapaDef, f: FichaDef): string[] {
   }
 }
 
+/** O que o atalho do decidido ainda precisa confirmar antes dos horários. */
+export function faltamNoAtalhoDecidido(f: FichaDef): string[] {
+  const falta: string[] = [];
+  if (f.idade_anos === undefined || f.idade_anos === null) falta.push('idade');
+  if (!preenchido(f.cidade) && (f.formato_preferido === undefined || f.formato_preferido === 'nao_informado')) {
+    falta.push('cidade (ou o formato)');
+  }
+  return falta;
+}
+
 export function decidirEtapaDef(args: {
   roteiro: RoteiroDef;
   ficha: FichaDef;
@@ -130,16 +140,11 @@ export function decidirEtapaDef(args: {
   if (args.retomada && encantada && indice(etapaAnterior) < indice('reserva')) {
     etapa = 'isolamento';
     modo = 'retomada';
-  } else if (
-    f.perfil === 'decidido' &&
-    indice(etapa) <= indice('descoberta') &&
-    f.idade_anos !== undefined &&
-    f.idade_anos !== null &&
-    (preenchido(f.cidade) || (f.formato_preferido !== undefined && f.formato_preferido !== 'nao_informado'))
-  ) {
-    // Atalho do lead decidido: idade e cidade (ou formato) e direto aos horários.
-    etapa = 'fechamento';
+  } else if (f.perfil === 'decidido' && indice(etapa) <= indice('descoberta')) {
+    // Atalho do lead decidido (aba Perfis): confirma idade e cidade (ou formato)
+    // e vai direto aos horários — sem recuo nem Descoberta completa.
     modo = 'decidido';
+    if (faltamNoAtalhoDecidido(f).length === 0) etapa = 'fechamento';
   }
 
   // Avança enquanto o critério de saída estiver cumprido. Nunca volta.
@@ -176,7 +181,9 @@ export function decidirEtapaDef(args: {
     if (passagem === null && modo === 'normal' && args.objecaoAtual !== null) modo = 'objecao';
   }
 
-  return { etapa, etapaAnterior, modo, passagem, respostas, faltam: faltamNaEtapa(etapa, f) };
+  const faltam =
+    modo === 'decidido' && indice(etapa) < indice('fechamento') ? faltamNoAtalhoDecidido(f) : faltamNaEtapa(etapa, f);
+  return { etapa, etapaAnterior, modo, passagem, respostas, faltam };
 }
 
 /**

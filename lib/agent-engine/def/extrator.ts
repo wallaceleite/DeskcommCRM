@@ -63,7 +63,7 @@ Campos da ficha e valores permitidos:
 - preco_informado_em: etapa em que a EQUIPE informou o valor (contato | descoberta | encantamento | isolamento | fechamento) ou null
 - reacao_preco: sim | sim_sem_firmeza | nao | null
 - preferencia_turno: texto (ex.: "manhã, segunda ou quarta") ou null
-- horario_escolhido: texto ou null
+- horario_escolhido: "AAAA-MM-DD HH:MM" do horário que a família ESCOLHEU entre os oferecidos pela equipe, ou null
 - ficha_nf_completa: true quando a família já mandou os dados da nota fiscal
 - pagamento: pix | cartao | depois | nao | null
 - objecoes: [{"tipo", "momento", "mao": dupla|unica, "evitavel_em", "saida_usada", "contornada": true|false}]
@@ -118,10 +118,41 @@ export function lerSaidaDoExtrator(texto: string): ExtracaoDef | null {
   return { ficha: ficha.data, intencoes: [...new Set(intencoes)], objecao_atual: objecao, provas };
 }
 
+function chave(texto: string | null | undefined): string {
+  return (texto ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+type Objecao = NonNullable<FichaDef['objecoes']>[number];
+type RedFlag = NonNullable<FichaDef['red_flags']>[number];
+
+/** Objeções: uma por tipo + momento; a contornada não volta a não contornada. */
+function unirObjecoes(anteriores: readonly Objecao[], novas: readonly Objecao[]): Objecao[] {
+  const porChave = new Map<string, Objecao>();
+  for (const o of [...anteriores, ...novas]) {
+    const k = `${chave(o.tipo)}|${chave(o.momento)}`;
+    const ja = porChave.get(k);
+    porChave.set(k, ja ? { ...ja, ...o, contornada: ja.contornada || o.contornada } : o);
+  }
+  return [...porChave.values()];
+}
+
+/** Sinais de risco: um por descrição; o resolvido não reabre. */
+function unirRedFlags(anteriores: readonly RedFlag[], novas: readonly RedFlag[]): RedFlag[] {
+  const porChave = new Map<string, RedFlag>();
+  for (const r of [...anteriores, ...novas]) {
+    const k = chave(r.descricao);
+    const ja = porChave.get(k);
+    porChave.set(k, ja ? { ...ja, ...r, resolvida: ja.resolvida || r.resolvida } : r);
+  }
+  return [...porChave.values()];
+}
+
 /**
  * A ficha nova por cima da anterior. Campo que a extração não trouxe (ou trouxe
  * vazio) mantém o valor anterior — a conversa recortada em 20 mensagens não
- * pode apagar o que a família disse antes.
+ * pode apagar o que a família disse antes. As LISTAS somam (P1.1): o extrator só
+ * vê as objeções recentes, e trocar a lista inteira apagava as antigas e
+ * reabria sinal de risco já resolvido.
  */
 export function mesclarFicha(anterior: FichaDef, nova: FichaDef): FichaDef {
   const saida: Record<string, unknown> = { ...anterior };
@@ -129,6 +160,11 @@ export function mesclarFicha(anterior: FichaDef, nova: FichaDef): FichaDef {
     if (valor === undefined || valor === null) continue;
     if (Array.isArray(valor) && valor.length === 0) continue;
     saida[campo] = valor;
+  }
+  if (anterior.objecoes && nova.objecoes) saida.objecoes = unirObjecoes(anterior.objecoes, nova.objecoes);
+  if (anterior.red_flags && nova.red_flags) saida.red_flags = unirRedFlags(anterior.red_flags, nova.red_flags);
+  if (anterior.acompanhamento_atual && nova.acompanhamento_atual) {
+    saida.acompanhamento_atual = [...new Set([...anterior.acompanhamento_atual, ...nova.acompanhamento_atual])];
   }
   return saida as FichaDef;
 }

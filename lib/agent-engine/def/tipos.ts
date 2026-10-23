@@ -43,13 +43,26 @@ export const INTENCOES_DEF = [
   'pergunta_fora_da_base',
   'quer_data_antes',
   'formato_laudo',
+  'pergunta_se_e_ia',
 ] as const;
 export type IntencaoDef = (typeof INTENCOES_DEF)[number];
+
+/**
+ * Passagens que o CÓDIGO decide (o extrator nunca as marca): sem horário livre
+ * para oferecer, por exemplo. Moram no mesmo `passagens` do roteiro.
+ */
+export const GATILHOS_DE_CODIGO_DEF = ['sem_horario'] as const;
+export type GatilhoDeCodigoDef = (typeof GATILHOS_DE_CODIGO_DEF)[number];
+
+/** Campos da ficha que o uso de uma frase confirma (o rotulador lê `marca`). */
+export const MARCAS_DE_FRASE = ['recuo_estrategico_feito', 'parafraseou', 'acordo_sinceridade', 'preco'] as const;
 
 const fraseSchema = z.object({
   id: z.string().min(1),
   texto: z.string().min(1),
   quando: z.string().optional(),
+  /** Usar esta frase confirma este campo da ficha (ex.: o recuo estratégico). */
+  marca: z.enum(MARCAS_DE_FRASE).optional(),
 });
 export type FraseDef = z.infer<typeof fraseSchema>;
 
@@ -61,11 +74,13 @@ const blocoSchema = z.object({
 export type BlocoDef = z.infer<typeof blocoSchema>;
 
 const passagemSchema = z.object({
-  intencao: z.enum(INTENCOES_DEF),
+  intencao: z.enum([...INTENCOES_DEF, ...GATILHOS_DE_CODIGO_DEF]),
   /** passar = chama a equipe; responder = segue a venda com a mensagem; dispensar = encerra. */
   acao: z.enum(['passar', 'responder', 'dispensar', 'urgencia']),
   mensagem: z.string().min(1),
   fora_do_horario: z.string().optional(),
+  /** Só para `responder`: a mensagem é a resposta inteira do turno (sem seguir a etapa). */
+  exclusiva: z.boolean().optional(),
 });
 export type PassagemDef = z.infer<typeof passagemSchema>;
 
@@ -93,8 +108,30 @@ export const roteiroDefSchema = z.object({
     dispensa: blocoSchema,
     decidido: blocoSchema.optional(),
     retomada: blocoSchema.optional(),
+    /** Turno de cadência (follow-up): retoma de onde parou, sem pergunta nova de Descoberta. */
+    cadencia: blocoSchema.optional(),
   }),
   passagens: z.array(passagemSchema).default([]),
+  /** Regras da agenda que o código aplica às vagas de `def_horarios`. */
+  agenda: z
+    .object({
+      /** Quantas opções oferecer de uma vez (o pacote pede 2). */
+      opcoes: z.number().int().min(1).max(4).default(2),
+      /** Horas que a vaga escolhida fica segura para a família. */
+      reserva_horas: z.number().int().min(1).max(168).default(24),
+      /** Vagas nesse dia (0=domingo) a partir dessa hora são neste local e só nesta modalidade. */
+      regras_de_local: z
+        .array(
+          z.object({
+            dia: z.number().int().min(0).max(6),
+            a_partir_de: z.string().regex(/^\d{2}:\d{2}$/),
+            local: z.string().min(1),
+            modalidade: z.enum(['presencial', 'online']),
+          }),
+        )
+        .default([]),
+    })
+    .optional(),
   extrator: z.object({ instrucoes: z.string().min(1) }),
   revisor: z.object({
     ativo: z.boolean().default(true),
@@ -105,6 +142,14 @@ export const roteiroDefSchema = z.object({
     links_permitidos: z.array(z.string().min(1)).default([]),
     /** O que o lead recebe quando o revisor reprova duas vezes. `{nome}` vira o nome. */
     mensagem_espera: z.string().min(1),
+    /** Marcas de texto de IA, vetadas por código no texto ORIGINAL (flags `iu`). */
+    regex_tom: z.array(z.object({ regex: z.string().min(1), motivo: z.string().min(1) })).default([]),
+    /** Pergunta sobre campo que a ficha já tem é vetada (memória). */
+    perguntas_da_ficha: z
+      .array(z.object({ campo: z.string().min(1), regex: z.string().min(1) }))
+      .default([]),
+    /** Acima desta semelhança com uma mensagem anterior da equipe, a mensagem é vetada. */
+    similaridade_maxima: z.number().min(0.5).max(1).default(0.8),
   }),
 });
 export type RoteiroDef = z.infer<typeof roteiroDefSchema>;

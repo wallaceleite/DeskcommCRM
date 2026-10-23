@@ -7,9 +7,20 @@
 import { describe, expect, it } from "vitest";
 
 import { decidirEtapaDef, equipeNoHorario, faltamNaEtapa } from "@/lib/agent-engine/def/roteador";
-import { checagensDeCodigo, lerVereditoDoRevisor, suspeitasDoNuncaDiga } from "@/lib/agent-engine/def/revisor";
+import {
+  checagensDeCodigo,
+  lerVereditoDoRevisor,
+  limiteDoTurno,
+  perguntouPreco,
+  semelhanca,
+  suspeitasDoNuncaDiga,
+  vereditoSemModelo,
+} from "@/lib/agent-engine/def/revisor";
 import { lerSaidaDoExtrator, mesclarFicha } from "@/lib/agent-engine/def/extrator";
-import { houveRetomada } from "@/lib/agent-engine/def/turno";
+import { houveRetomada, iniciarTurnoDef, prepararMensagemDePassagem, resumoCurtoDaFicha } from "@/lib/agent-engine/def/turno";
+import { renderizarBlocosDef } from "@/lib/agent-engine/def/blocos";
+import { agoraNoFuso, encontrarVagaEscolhida, escolherVagas, type HorarioDef } from "@/lib/agent-engine/def/agenda";
+import { camposConfirmadosPelaFrase, lerRotulos } from "@/lib/agent-engine/def/rotulador";
 import { roteiroDefSchema, type FichaDef, type RoteiroDef } from "@/lib/agent-engine/def/tipos";
 
 const bloco = (titulo: string) => ({ titulo, instrucoes: `instruções de ${titulo}`, frases: [] });
@@ -32,7 +43,17 @@ const ROTEIRO: RoteiroDef = roteiroDefSchema.parse({
     { intencao: "adulto", acao: "dispensar", mensagem: "atende até 17 anos e 11 meses" },
     { intencao: "dermatologia", acao: "passar", mensagem: "equipe da Dra. Manoela" },
     { intencao: "pergunta_clinica", acao: "responder", mensagem: "o Dr. Raphael precisa avaliar" },
+    {
+      intencao: "pergunta_se_e_ia",
+      acao: "responder",
+      exclusiva: true,
+      mensagem: "Sou a assistente virtual da equipe do Dr. Raphael e acompanho o seu atendimento junto com a equipe. Se preferir falar com uma pessoa, eu chamo agora. Quer que eu chame?",
+    },
+    { intencao: "quer_humano", acao: "passar", mensagem: "Claro! Vou chamar alguém da equipe para continuar com você, combinado?" },
+    { intencao: "quer_data_antes", acao: "passar", mensagem: "Vou colocar o [nome da criança] na lista. Garantimos o dia [data], combinado?" },
+    { intencao: "sem_horario", acao: "passar", mensagem: "Vou ver com a equipe os próximos horários e já te passo, combinado?" },
   ],
+  agenda: { opcoes: 2, reserva_horas: 24, regras_de_local: [{ dia: 1, a_partir_de: "12:00", local: "Aracruz", modalidade: "presencial" }] },
   extrator: { instrucoes: "extraia" },
   revisor: {
     base: "fatos",
@@ -180,7 +201,6 @@ describe("revisor DEF: as checagens por código do documento 05", () => {
       etapa: "descoberta",
       modo: "normal",
       intencoes: [],
-      enviosNoTurno: 0,
       linksPermitidos: ROTEIRO.revisor.links_permitidos,
       ...extra,
     }).map((v) => v.regra);
@@ -189,15 +209,14 @@ describe("revisor DEF: as checagens por código do documento 05", () => {
     expect(checar("Qual a idade dele?")).toEqual([]);
   });
 
-  it("1: mais de 2 parágrafos, e a 3ª mensagem do turno", () => {
+  it("1: mais de 2 parágrafos", () => {
     expect(checar("a\n\nb\n\nc?")).toContain("1");
-    expect(checar("Qual a idade?", { enviosNoTurno: 2 })).toContain("1");
   });
 
-  it("2: tem que terminar em pergunta — menos na urgência e no pagamento recebido", () => {
-    expect(checar("Entendi.")).toContain("2");
-    expect(checar("Procure um serviço de urgência.", { modo: "urgencia" })).toEqual([]);
-    expect(checar("Parabéns pela decisão, Ana! O horário está garantido.")).toEqual([]);
+  it("2 (P0.5): a 1ª mensagem pode não ter pergunta; uma pergunta só, e no fim", () => {
+    expect(checar("A consulta inclui os questionários antes do encontro.")).toEqual([]);
+    expect(checar("Tudo bem? Posso te perguntar umas coisas?")).toContain("2");
+    expect(checar("Qual a idade dele? Fico no aguardo.")).toContain("2");
   });
 
   it("3: sem senhor ou senhora", () => {
@@ -285,3 +304,354 @@ describe("horário da equipe e retomada", () => {
     expect(faltamNaEtapa("reserva", {})).toHaveLength(3);
   });
 });
+
+describe("P0.4/P0.5: o limite do turno não é veto", () => {
+  it("2 mensagens enviadas ou pergunta já feita: aguarde a família", () => {
+    expect(limiteDoTurno({ enviosNoTurno: 0, perguntasNoTurno: 0 })).toBeNull();
+    expect(limiteDoTurno({ enviosNoTurno: 1, perguntasNoTurno: 0 })).toBeNull();
+    expect(limiteDoTurno({ enviosNoTurno: 2, perguntasNoTurno: 0 })).toMatch(/aguarde/);
+    expect(limiteDoTurno({ enviosNoTurno: 1, perguntasNoTurno: 1 })).toMatch(/aguarde/);
+  });
+});
+
+// O turno inteiro com banco e modelo falsos: o revisor de modelo desligado, sem
+// extração (o envoltório é o que se mede aqui).
+function poolFalso(roteiro: RoteiroDef, horarios: unknown[] = []) {
+  const consultas: string[] = [];
+  return {
+    consultas,
+    pool: {
+      query: async (sql: string) => {
+        consultas.push(sql);
+        if (sql.includes("from def_roteiros")) return { rows: [{ conteudo: roteiro }], rowCount: 1 };
+        if (sql.includes("from def_horarios")) return { rows: horarios, rowCount: horarios.length };
+        return { rows: [], rowCount: 0 };
+      },
+    },
+  };
+}
+
+const LOG = { warn: () => {}, info: () => {}, error: () => {}, debug: () => {} };
+
+function contexto(mensagens: { direction: "inbound" | "outbound"; body: string }[], nome: string | null = "Juliana Souza") {
+  return {
+    lead_id: "",
+    contact: { name: nome, phone: null, email: null, tags: [], is_blocked: false },
+    conversation_id: null,
+    last_human_decision: null,
+    messages: mensagens.map((m, i) => ({ ...m, sent_at: new Date(Date.parse("2026-10-23T12:00:00Z") + i * 60_000).toISOString() })),
+  };
+}
+
+async function turnoDeTeste(opts: {
+  roteiro?: RoteiroDef;
+  mensagens?: { direction: "inbound" | "outbound"; body: string }[];
+  temMensagemNova?: boolean;
+  horarios?: unknown[];
+  agora?: number;
+}) {
+  const roteiro = opts.roteiro ?? roteiroDefSchema.parse({ ...ROTEIRO, revisor: { ...ROTEIRO.revisor, ativo: false } });
+  const { pool } = poolFalso(roteiro, opts.horarios);
+  const turno = await iniciarTurnoDef({
+    pool: pool as never,
+    llmCfg: {} as never,
+    log: LOG as never,
+    tenantId: "org",
+    leadId: "",
+    agente: { agentId: "agente", provider: "openai", credentialId: null },
+    contexto: contexto(opts.mensagens ?? [{ direction: "inbound", body: "Oi" }]) as never,
+    temMensagemNova: opts.temMensagemNova ?? false,
+    persistir: false,
+    fuso: "America/Sao_Paulo",
+    agora: opts.agora ?? Date.parse("2026-10-23T15:00:00Z"),
+  });
+  const enviados: string[] = [];
+  const passagens: unknown[] = [];
+  const tools = turno!.envolverFerramentas({
+    send_message: { execute: async (i: { body: string }) => (enviados.push(i.body), { ok: true, message_id: `m${enviados.length}` }) },
+    request_human_handoff: { execute: async (i: unknown) => (passagens.push(i), { ok: true }) },
+  } as never) as unknown as Record<string, { execute: (i: unknown, o: unknown) => Promise<{ ok?: boolean; error?: { code: string } }> }>;
+  return { turno: turno!, tools, enviados, passagens };
+}
+
+describe("P0.4: o modelo tenta 4 envios", () => {
+  it("saem 2 mensagens, nenhuma passagem e nenhuma mensagem de espera", async () => {
+    const t = await turnoDeTeste({});
+    const r = [] as { ok?: boolean; error?: { code: string } }[];
+    for (const body of ["A avaliação começa antes da consulta.", "Posso te fazer umas perguntas rápidas?", "Qual a idade?", "E a cidade?"]) {
+      r.push(await t.tools.send_message!.execute({ body }, {}));
+    }
+    expect(t.enviados).toEqual(["A avaliação começa antes da consulta.", "Posso te fazer umas perguntas rápidas?"]);
+    expect(t.passagens).toHaveLength(0);
+    expect(t.enviados.some((b) => b.startsWith("Já te respondo"))).toBe(false);
+    expect(r.slice(2).map((x) => x.error?.code)).toEqual(["def_turno_encerrado", "def_turno_encerrado"]);
+    const resumo = t.turno.finalizar()!;
+    expect(resumo).toMatchObject({ mensagens: 2, perguntas: 1, termina_em_pergunta: true, passou_para_equipe: false });
+  });
+
+  it("P0.5: duas mensagens com pergunta cada uma — a segunda é recusada", async () => {
+    const t = await turnoDeTeste({});
+    await t.tools.send_message!.execute({ body: "Qual a idade dele?" }, {});
+    const segunda = await t.tools.send_message!.execute({ body: "E vocês moram em qual cidade?" }, {});
+    expect(segunda.error?.code).toBe("def_turno_encerrado");
+    expect(t.enviados).toHaveLength(1);
+  });
+
+  it("P0.5: a 1ª sem pergunta recebe o aviso de mandar a 2ª com a pergunta", async () => {
+    const t = await turnoDeTeste({});
+    const r = (await t.tools.send_message!.execute({ body: "A avaliação começa antes da consulta." }, {})) as { def_aviso?: string };
+    expect(r.def_aviso).toMatch(/segunda e última/);
+  });
+
+  it("dois vetos de conteúdo ainda passam para a equipe com a mensagem de espera", async () => {
+    const t = await turnoDeTeste({});
+    await t.tools.send_message!.execute({ body: "A senhora prefere manhã?" }, {});
+    const r = await t.tools.send_message!.execute({ body: "A senhora prefere tarde?" }, {});
+    expect(r.error?.code).toBe("def_revisor_passou_para_equipe");
+    expect(t.enviados).toEqual(["Já te respondo, Juliana, só um instante."]);
+    expect(t.passagens).toHaveLength(1);
+  });
+});
+
+describe("passagem: a família ouve a mensagem do roteiro, nunca o aviso genérico", () => {
+  it("o modelo chama a equipe sem falar: o código manda a passagem antes", async () => {
+    const t = await turnoDeTeste({});
+    await t.tools.request_human_handoff!.execute({ por_que: "pediu uma pessoa" }, {});
+    expect(t.enviados).toEqual(["Claro! Vou chamar alguém da equipe para continuar com você, combinado?"]);
+    expect(t.passagens).toHaveLength(1);
+    expect(JSON.stringify(t.passagens[0])).toContain("Método DEF, etapa contato");
+  });
+
+  it("se o modelo já falou, o código não repete", async () => {
+    const t = await turnoDeTeste({});
+    await t.tools.send_message!.execute({ body: "Claro, vou chamar alguém da equipe, combinado?" }, {});
+    await t.tools.request_human_handoff!.execute({}, {});
+    expect(t.enviados).toHaveLength(1);
+  });
+
+  it("colchetes: nome, nome da criança, e o que não tem valor", () => {
+    expect(prepararMensagemDePassagem("[nome], isso precisa de atenção agora.", "Juliana Souza", {})).toBe("Juliana, isso precisa de atenção agora.");
+    expect(prepararMensagemDePassagem("[nome], isso precisa de atenção agora.", null, {})).toBe("Isso precisa de atenção agora.");
+    expect(prepararMensagemDePassagem("Recebi, [nome]! A equipe confere.", null, {})).toBe("Recebi! A equipe confere.");
+    expect(prepararMensagemDePassagem("Vou colocar o [nome da criança] na lista.", null, { para_quem: "filha" })).toBe("Vou colocar a sua filha na lista.");
+    expect(prepararMensagemDePassagem("Garantimos o dia [data].", null, {})).toBeNull();
+  });
+
+  it("o resumo para a equipe cabe no campo da passagem", () => {
+    expect(resumoCurtoDaFicha("encantamento", { ...DESCOBERTA_COMPLETA, nome_crianca: "Pedro", motivo_texto: "x".repeat(400) }).length).toBeLessThanOrEqual(200);
+  });
+});
+
+describe("P0.7: perguntou se é IA", () => {
+  it("responde a verdade e oferece uma pessoa, sem passar nem seguir a etapa", () => {
+    const d = decidir({}, { intencoes: ["pergunta_se_e_ia"] });
+    expect(d.modo).toBe("normal");
+    expect(d.passagem).toBeNull();
+    expect(d.respostas.map((r) => r.intencao)).toEqual(["pergunta_se_e_ia"]);
+    const bloco = renderizarBlocosDef({ roteiro: ROTEIRO, decisao: d, ficha: {}, dentroDoHorario: true, objecaoAtual: null });
+    expect(bloco).toContain("RESPONDA SÓ ISTO");
+    expect(bloco).toContain("Sou a assistente virtual");
+  });
+
+  it("o revisor veta quem nega ser IA (expressão do roteiro)", () => {
+    expect(suspeitasDoNuncaDiga("Não, não sou robô, sou da equipe", ["nao sou (um |uma )?(robo|bot|ia)"])).toHaveLength(1);
+  });
+});
+
+describe("P1.1: a ficha soma as listas", () => {
+  it("objeções antigas ficam; a contornada não volta", () => {
+    const anterior: FichaDef = {
+      objecoes: [
+        { tipo: "valor", momento: "fechamento", mao: "dupla", evitavel_em: null, saida_usada: null, contornada: true },
+        { tipo: "conjuge", momento: "descoberta", mao: "dupla", evitavel_em: "descoberta", saida_usada: null, contornada: false },
+      ],
+    };
+    const nova: FichaDef = {
+      objecoes: [{ tipo: "valor", momento: "fechamento", mao: "dupla", evitavel_em: null, saida_usada: "3x", contornada: false }],
+    };
+    const r = mesclarFicha(anterior, nova).objecoes!;
+    expect(r).toHaveLength(2);
+    expect(r.find((o) => o.tipo === "valor")).toMatchObject({ contornada: true, saida_usada: "3x" });
+  });
+
+  it("sinal de risco resolvido não reabre; acompanhamento soma", () => {
+    const r = mesclarFicha(
+      { red_flags: [{ descricao: "Prazo da escola", resolvida: true }], acompanhamento_atual: ["fono"] },
+      { red_flags: [{ descricao: "prazo da  escola", resolvida: false }, { descricao: "Convênio", resolvida: false }], acompanhamento_atual: ["psicologo"] },
+    );
+    expect(r.red_flags).toEqual([
+      { descricao: "prazo da  escola", resolvida: true },
+      { descricao: "Convênio", resolvida: false },
+    ]);
+    expect(r.acompanhamento_atual).toEqual(["fono", "psicologo"]);
+  });
+});
+
+describe("P1.2: revisor sem modelo", () => {
+  it("sem suspeita, solta; com suspeita, segura e pede reescrita", () => {
+    expect(vereditoSemModelo([])).toMatchObject({ aprovada: true, origem: "falhou_aberto" });
+    expect(vereditoSemModelo(["resolve tudo"])).toMatchObject({ aprovada: false, regras: ["8"], origem: "falhou_fechado" });
+  });
+});
+
+describe("P1.3: atalho do decidido", () => {
+  it("só o bloco do atalho, sem o bloco do fechamento", () => {
+    const d = decidir({ perfil: "decidido", idade_anos: 9, cidade: "Vitória" });
+    expect(d.modo).toBe("decidido");
+    const bloco = renderizarBlocosDef({ roteiro: ROTEIRO, decisao: d, ficha: { perfil: "decidido" }, dentroDoHorario: true, objecaoAtual: null });
+    expect(bloco).toContain("instruções de Decidido");
+    expect(bloco).not.toContain("instruções de Fechamento");
+    expect(bloco).toContain("ainda NÃO ouviu o valor");
+  });
+});
+
+describe("P1.5: extrator falhou e a família perguntou o preço", () => {
+  it("o regex reconhece a pergunta de preço", () => {
+    expect(perguntouPreco("Quanto custa a consulta?")).toBe(true);
+    expect(perguntouPreco("Qual o valor?")).toBe(true);
+    expect(perguntouPreco("É pro meu filho de 7 anos")).toBe(false);
+  });
+
+  it("no turno, a resposta com o valor passa no contato (sem extração)", async () => {
+    const t = await turnoDeTeste({ temMensagemNova: true, mensagens: [{ direction: "inbound", body: "Qual o valor da consulta?" }] });
+    const r = await t.tools.send_message!.execute({ body: "A primeira consulta é R$ 1.200. Para quem é a consulta?" }, {});
+    expect(r.ok).toBe(true);
+  });
+});
+
+describe("item 4: tom, memória e repetição", () => {
+  const roteiroTom = roteiroDefSchema.parse({
+    ...ROTEIRO,
+    revisor: {
+      ...ROTEIRO.revisor,
+      regex_tom: [
+        { regex: "\\*\\*|^\\s*([-*]|\\d+\\.)\\s", motivo: "Sem markdown." },
+        { regex: "—", motivo: "Sem travessão longo." },
+        { regex: "^(ótima pergunta|fico feliz|com certeza!)", motivo: "Sem abertura pronta." },
+        { regex: "(?![😬])\\p{Extended_Pictographic}", motivo: "Sem emoji." },
+      ],
+      perguntas_da_ficha: [{ campo: "cidade", regex: "(qual|em que|de que) cidade|onde (voces )?moram" }],
+    },
+  });
+  const checarTom = (body: string, ficha: FichaDef = {}, anteriores: string[] = []) =>
+    checagensDeCodigo({
+      body,
+      etapa: "descoberta",
+      modo: "normal",
+      intencoes: [],
+      linksPermitidos: [],
+      regexTom: roteiroTom.revisor.regex_tom,
+      perguntasDaFicha: roteiroTom.revisor.perguntas_da_ficha,
+      ficha,
+      anterioresDaEquipe: anteriores,
+    }).map((v) => v.regra);
+
+  it("veta markdown, travessão, abertura pronta e emoji (menos o 😬)", () => {
+    expect(checarTom("Os **diferenciais** são estes. Faz sentido?")).toContain("tom");
+    expect(checarTom("A consulta — online ou presencial. Qual prefere?")).toContain("tom");
+    expect(checarTom("Ótima pergunta! Qual a idade dele?")).toContain("tom");
+    expect(checarTom("Juliana, tá por aí? 🙂")).toContain("tom");
+    expect(checarTom("Juliana, tá por aí? 😬")).toEqual([]);
+  });
+
+  it("com a cidade na ficha, perguntar a cidade é reprovado", () => {
+    expect(checarTom("Vocês moram em qual cidade?", { cidade: "São Paulo" })).toContain("memoria");
+    expect(checarTom("Vocês moram em qual cidade?", {})).toEqual([]);
+  });
+
+  it("repetir uma mensagem anterior da equipe é reprovado", () => {
+    const anterior = "Juliana, aqui a gente tem um cuidado antes de agendar, porque a avaliação começa antes da consulta. Tudo bem?";
+    expect(semelhanca(anterior, anterior.replace("Juliana", "Ju"))).toBeGreaterThan(0.8);
+    expect(checarTom(anterior.replace("Juliana", "Ju"), {}, [anterior])).toContain("repeticao");
+    expect(checarTom("Qual a idade dele?", {}, [anterior])).toEqual([]);
+  });
+});
+
+describe("P0.3: horários", () => {
+  const agora = agoraNoFuso(Date.parse("2026-10-23T15:00:00Z"), "America/Sao_Paulo"); // sexta 12:00
+  const h = (data: string, hora: string, extra: Partial<HorarioDef> = {}): HorarioDef => ({
+    data,
+    hora,
+    modalidade: "ambas",
+    local: null,
+    status: "livre",
+    reservado_para: null,
+    reserva_ate: null,
+    ...extra,
+  });
+
+  it("2 opções em dias diferentes: uma de manhã e outra em outro dia à tarde", () => {
+    const vagas = escolherVagas({
+      horarios: [h("2026-10-23", "09:00"), h("2026-10-28", "09:00"), h("2026-10-28", "14:00"), h("2026-10-29", "14:00")],
+      roteiro: ROTEIRO,
+      formato: "online",
+      agora,
+      contactId: null,
+    });
+    expect(vagas.map((v) => `${v.data} ${v.hora}`)).toEqual(["2026-10-28 09:00", "2026-10-29 14:00"]);
+  });
+
+  it("segunda à tarde é Aracruz presencial: não serve para quem quer online", () => {
+    const horarios = [h("2026-10-26", "14:00"), h("2026-10-27", "09:00")];
+    const online = escolherVagas({ horarios, roteiro: ROTEIRO, formato: "online", agora, contactId: null });
+    expect(online.map((v) => v.data)).toEqual(["2026-10-27"]);
+    const presencial = escolherVagas({ horarios, roteiro: ROTEIRO, formato: "presencial", agora, contactId: null });
+    expect(presencial.find((v) => v.data === "2026-10-26")).toMatchObject({ local: "Aracruz", modalidade: "presencial" });
+  });
+
+  it("reserva de outra família não aparece; vencida ou da mesma família aparece", () => {
+    const fim = Date.parse("2026-10-24T15:00:00Z");
+    const horarios = [
+      h("2026-10-27", "09:00", { status: "reservado_provisorio", reservado_para: "outra", reserva_ate: fim }),
+      h("2026-10-28", "09:00", { status: "reservado_provisorio", reservado_para: "outra", reserva_ate: Date.parse("2026-10-23T10:00:00Z") }),
+      h("2026-10-29", "14:00", { status: "reservado_provisorio", reservado_para: "eu", reserva_ate: fim }),
+    ];
+    expect(escolherVagas({ horarios, roteiro: ROTEIRO, formato: "indiferente", agora, contactId: "eu" }).map((v) => v.data)).toEqual([
+      "2026-10-28",
+      "2026-10-29",
+    ]);
+  });
+
+  it("acha a vaga escolhida pela saída do extrator", () => {
+    const vagas = [h("2026-10-28", "09:00"), h("2026-10-29", "14:00")];
+    expect(encontrarVagaEscolhida("2026-10-29 14:00", vagas)?.data).toBe("2026-10-29");
+    expect(encontrarVagaEscolhida("29/10 às 14h", vagas)?.hora).toBe("14:00");
+    expect(encontrarVagaEscolhida("quinta", vagas)).toBeNull();
+  });
+
+  it("decidido sem vaga nenhuma: passa para a equipe, nunca inventa data", async () => {
+    const roteiro = roteiroDefSchema.parse({ ...ROTEIRO, revisor: { ...ROTEIRO.revisor, ativo: false } });
+    const t = await turnoDeTeste({ roteiro, horarios: [] });
+    // a decisão do turno sai da ficha vazia (sem extração): força o atalho pela ficha
+    expect(t.turno.decisao.modo).not.toBe("decidido");
+    const d = decidir({ perfil: "decidido", idade_anos: 9, cidade: "Vitória" });
+    expect(d.modo).toBe("decidido");
+  });
+});
+
+describe("atalho do decidido sem idade nem cidade (cenário 18)", () => {
+  it("entra no atalho e pede idade e cidade antes dos horários", () => {
+    const d = decidir({ perfil: "decidido" });
+    expect(d.modo).toBe("decidido");
+    expect(d.etapa).toBe("contato");
+    expect(d.faltam).toEqual(["idade", "cidade (ou o formato)"]);
+  });
+});
+
+describe("P1.6: rotulador", () => {
+  it("lê os rótulos e ignora frase fora do roteiro", () => {
+    const r = lerRotulos('{"tipo_pergunta":"situacao","formato_pergunta":"fechada","foco_pergunta":"pessoa","modo_frase":"nenhum","usou_frase_matriz":"DESC-02"}', new Set(["DESC-02"]));
+    expect(r).toMatchObject({ tipo_pergunta: "situacao", usou_frase_matriz: "DESC-02" });
+    expect(lerRotulos('{"tipo_pergunta":"inventado","usou_frase_matriz":"XX"}', new Set(["DESC-02"]))).toMatchObject({
+      tipo_pergunta: "nenhuma",
+      usou_frase_matriz: null,
+    });
+  });
+
+  it("a frase com marca confirma o campo da ficha", () => {
+    expect(camposConfirmadosPelaFrase({ id: "DESC-02", texto: "recuo", marca: "recuo_estrategico_feito" }, "contato")).toEqual({ recuo_estrategico_feito: true });
+    expect(camposConfirmadosPelaFrase({ id: "FECH-05", texto: "valor", marca: "preco" }, "fechamento")).toEqual({ preco_informado_em: "fechamento" });
+    expect(camposConfirmadosPelaFrase({ id: "X", texto: "y" }, "contato")).toBeNull();
+  });
+});
+

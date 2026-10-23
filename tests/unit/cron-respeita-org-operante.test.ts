@@ -56,6 +56,7 @@ const SEM_FILTRO: Record<string, string> = {
   "case-stale-watcher": "só reabre aviso de caso na Central; sem custo nem saída",
   "channel-health": "só pergunta ao transporte se a sessão está de pé; nenhuma mensagem ao cliente",
   "contact-avatars": "baixa a foto de perfil: deliberadamente não gatilhado (spec §4)",
+  "def-retencao": "[fork] retenção LGPD das fichas do Método DEF: esvaziar dado vencido vale também para a org parada; sem custo nem saída",
   "contact-birthdays": "só emite contact.birthday; o consumidor (automationRulesHandler) é 'pula'",
   "contact-phones": "só consulta o transporte para achar o telefone; nenhuma mensagem ao cliente",
   "contact-proposals-watcher": "só expira propostas de dado vencidas; escrita interna",

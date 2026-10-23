@@ -10,9 +10,10 @@
  *     modelo confirmar: sozinhas elas pegariam frase legítima ("depende de cada
  *     caso, sem antecipar o diagnóstico").
  *
- * O modelo FALHA ABERTO: sem resposta legível, a mensagem segue e o evento fica
- * registrado. A camada de código continua valendo, e as travas da cadeia
- * `before-send` (afirmação clínica, promessa, vocabulário) também.
+ * O modelo FALHA ABERTO quando não há suspeita: sem resposta legível, a
+ * mensagem segue. Com expressão do "nunca diga" no texto, FALHA FECHADO (P1.2).
+ * A camada de código continua valendo, e as travas da cadeia `before-send`
+ * (afirmação clínica, promessa, vocabulário) também.
  */
 import type pg from 'pg';
 import type { Logger } from '../obs/logger';
@@ -21,7 +22,7 @@ import { LlmBudgetExceededError, runModelCall, type LlmEdgeConfig } from '../edg
 import type { LlmResolveOverride } from '../edge/llm/credentials';
 import { extrairObjetoJsonDoTexto } from '../texto/extrair-json-do-texto';
 import type { ModoDef } from './roteador';
-import type { EtapaDef, IntencaoDef, RoteiroDef } from './tipos';
+import type { EtapaDef, FichaDef, IntencaoDef, RoteiroDef } from './tipos';
 
 export interface VetoDef {
   regra: string;
@@ -32,18 +33,106 @@ export interface VereditoDef {
   aprovada: boolean;
   regras: string[];
   motivo: string;
-  /** Quem decidiu: o código, o modelo, ou ninguém (o modelo falhou e soltou). */
-  origem: 'codigo' | 'modelo' | 'falhou_aberto';
+  /**
+   * Quem decidiu: o código, o modelo, ou ninguém — o modelo falhou e soltou
+   * (`falhou_aberto`), ou falhou com expressão suspeita no texto e segurou
+   * (`falhou_fechado`, contexto de saúde: na dúvida, reescreve).
+   */
+  origem: 'codigo' | 'modelo' | 'falhou_aberto' | 'falhou_fechado';
 }
 
 /** Etapas em que o valor completo ainda não pode aparecer (sem o lead perguntar). */
 const ANTES_DO_PRECO: readonly EtapaDef[] = ['contato', 'descoberta', 'encantamento', 'isolamento'];
 
-/** Modos em que a mensagem não precisa terminar em pergunta. */
-const SEM_PERGUNTA: readonly ModoDef[] = ['urgencia', 'dispensa', 'passagem'];
+/** Modos em que o turno não precisa terminar em pergunta. */
+export const SEM_PERGUNTA: readonly ModoDef[] = ['urgencia', 'dispensa', 'passagem'];
+
+/** Mensagens que a família recebe por vez (documento 05, regra 1). */
+export const MENSAGENS_POR_TURNO = 2;
+
+/** Abaixo disto a mensagem é curta demais para medir repetição ("Combinado?"). */
+const TAMANHO_MINIMO_PARA_REPETICAO = 40;
 
 function semAcento(texto: string): string {
-  return texto.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  return texto.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
+/** A família perguntou o preço? Regex simples, para quando o extrator falhou (P1.5). */
+export function perguntouPreco(texto: string): boolean {
+  return /\b(quanto|valor|preco|custa|custo|investimento)\b/.test(semAcento(texto));
+}
+
+/** Termina em pergunta? (o emoji depois do "?", como o 😬 da cadência, não conta) */
+export function terminaEmPergunta(body: string): boolean {
+  return body.replace(/[\s\p{Extended_Pictographic}\uFE0F]+$/u, '').endsWith('?');
+}
+
+/** Quantas perguntas a mensagem faz (cada "?" fecha uma). */
+export function contarPerguntas(body: string): number {
+  return (body.match(/\?+/g) ?? []).length;
+}
+
+/** A mensagem é um aviso de pagamento recebido (não precisa de pergunta)? */
+export function eAvisoDePagamento(body: string): boolean {
+  return /parabens pela decisao|recebi[, !]/.test(semAcento(body));
+}
+
+/**
+ * O LIMITE DO TURNO — não é veto de conteúdo (P0.4 e P0.5). Já saíram 2
+ * mensagens, ou a pergunta do turno já foi feita: a próxima tentativa recebe
+ * "aguarde a família", sem contar para o limite de reprovações e sem a
+ * mensagem de espera. Contar como veto passava a conversa para a equipe sem
+ * motivo nenhum.
+ */
+export function limiteDoTurno(args: { enviosNoTurno: number; perguntasNoTurno: number }): string | null {
+  if (args.enviosNoTurno >= MENSAGENS_POR_TURNO) {
+    return 'Você já mandou 2 mensagens neste turno. Não mande mais nada: aguarde a família responder.';
+  }
+  if (args.perguntasNoTurno > 0) {
+    return 'A pergunta deste turno já foi feita. Não mande mais nada: aguarde a família responder.';
+  }
+  return null;
+}
+
+/** Semelhança de Dice sobre bigramas de caracteres (0 a 1), sem acento nem pontuação. */
+export function semelhanca(a: string, b: string): number {
+  const limpar = (t: string) => semAcento(t).replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const x = limpar(a);
+  const y = limpar(b);
+  if (x === y) return 1;
+  if (x.length < 2 || y.length < 2) return 0;
+  const bigramas = new Map<string, number>();
+  for (let i = 0; i < x.length - 1; i++) {
+    const bg = x.slice(i, i + 2);
+    bigramas.set(bg, (bigramas.get(bg) ?? 0) + 1);
+  }
+  let comuns = 0;
+  for (let i = 0; i < y.length - 1; i++) {
+    const bg = y.slice(i, i + 2);
+    const n = bigramas.get(bg) ?? 0;
+    if (n > 0) {
+      comuns += 1;
+      bigramas.set(bg, n - 1);
+    }
+  }
+  return (2 * comuns) / (x.length - 1 + y.length - 1);
+}
+
+function campoPreenchido(ficha: FichaDef, campo: string): boolean {
+  const v = (ficha as Record<string, unknown>)[campo];
+  if (v === undefined || v === null) return false;
+  if (typeof v === 'string') return v.trim() !== '' && v !== 'nao_informado' && v !== 'nao_mapeado';
+  if (Array.isArray(v)) return v.length > 0;
+  return true;
+}
+
+function testar(expressao: string, texto: string, flags: string): boolean {
+  try {
+    return new RegExp(expressao, flags).test(texto);
+  } catch {
+    // Expressão inválida no roteiro não pode derrubar o envio.
+    return false;
+  }
 }
 
 export function checagensDeCodigo(args: {
@@ -51,29 +140,34 @@ export function checagensDeCodigo(args: {
   etapa: EtapaDef;
   modo: ModoDef;
   intencoes: readonly IntencaoDef[];
-  enviosNoTurno: number;
   linksPermitidos: readonly string[];
+  /** Marcas de texto de IA do roteiro (`revisor.regex_tom`). */
+  regexTom?: readonly { regex: string; motivo: string }[];
+  /** Perguntas sobre campo já preenchido (`revisor.perguntas_da_ficha`). */
+  perguntasDaFicha?: readonly { campo: string; regex: string }[];
+  ficha?: FichaDef;
+  /** O que a equipe já mandou nesta conversa (repetição). */
+  anterioresDaEquipe?: readonly string[];
+  similaridadeMaxima?: number;
 }): VetoDef[] {
   const { body } = args;
   const vetos: VetoDef[] = [];
   const texto = semAcento(body);
 
-  // 1. No máximo 2 parágrafos por mensagem e 2 mensagens por vez.
+  // 1. No máximo 2 parágrafos por mensagem (o limite de mensagens é `limiteDoTurno`).
   const paragrafos = body.split(/\n\s*\n/).filter((p) => p.trim() !== '');
   if (paragrafos.length > 2) {
     vetos.push({ regra: '1', motivo: 'Use no máximo 2 parágrafos curtos por mensagem.' });
   }
-  if (args.enviosNoTurno >= 2) {
-    vetos.push({
-      regra: '1',
-      motivo: 'Você já mandou 2 mensagens neste turno. Não mande mais nada: espere a família responder.',
-    });
-  }
 
-  // 2. Termina em pergunta (menos urgência, dispensa, passagem e pagamento recebido).
-  const recebeuPagamento = /parabens pela decisao|recebi[, !]/.test(texto);
-  if (!SEM_PERGUNTA.includes(args.modo) && !recebeuPagamento && !body.trim().endsWith('?')) {
-    vetos.push({ regra: '2', motivo: 'Termine a mensagem com uma pergunta (uma só).' });
+  // 2. Uma pergunta por vez, e no fim. A ÚLTIMA mensagem do turno termina em
+  //    pergunta — isso se cobra no fim do turno (`turno.ts`), não aqui: a 1ª de
+  //    duas mensagens pode ser só o bloco do valor.
+  const perguntas = contarPerguntas(body);
+  if (perguntas > 1) {
+    vetos.push({ regra: '2', motivo: 'Faça uma pergunta só por vez.' });
+  } else if (perguntas === 1 && !terminaEmPergunta(body)) {
+    vetos.push({ regra: '2', motivo: 'A pergunta fica no fim da mensagem: nada depois dela.' });
   }
 
   // 3. Sem "senhor" ou "senhora".
@@ -86,7 +180,7 @@ export function checagensDeCodigo(args: {
   const normalizar = (url: string) => semAcento(url).replace(/^https?:\/\//, '').replace(/^www\./, '');
   const foraDaLista = links.filter((l) => !args.linksPermitidos.some((p) => normalizar(l).startsWith(normalizar(p))));
   if (foraDaLista.length > 0) {
-    vetos.push({ regra: '4', motivo: `Não mande este link: ${foraDaLista.join(', ')}. Só o Instagram oficial é permitido.` });
+    vetos.push({ regra: '4', motivo: `Não mande este link: ${foraDaLista.join(', ')}. Só os links permitidos.` });
   }
 
   // 5. Valor completo antes do isolamento, sem o lead ter perguntado.
@@ -110,6 +204,30 @@ export function checagensDeCodigo(args: {
   const negaDesconto = /n(a|ã)o (temos|tem|existe|ha|oferecemos)[^.?!]{0,25}desconto/.test(texto);
   if (/desconto/.test(texto) && !/irmao/.test(texto) && !negaDesconto) {
     vetos.push({ regra: '7', motivo: 'O único desconto que existe é o de 10% para irmãos.' });
+  }
+
+  // T. Marcas de texto de IA (markdown, travessão, aberturas prontas, emoji…),
+  //    no texto ORIGINAL: acento e caixa contam aqui.
+  for (const tom of args.regexTom ?? []) {
+    if (testar(tom.regex, body, 'iu')) vetos.push({ regra: 'tom', motivo: tom.motivo });
+  }
+
+  // M. Memória: perguntar de novo o que a ficha já tem.
+  if (perguntas > 0 && args.ficha !== undefined) {
+    for (const p of args.perguntasDaFicha ?? []) {
+      if (campoPreenchido(args.ficha, p.campo) && testar(p.regex, texto, 'i')) {
+        vetos.push({ regra: 'memoria', motivo: `A família já respondeu isto (${p.campo}): não pergunte de novo.` });
+      }
+    }
+  }
+
+  // R. Repetição: a mesma frase já saiu para esta família.
+  if (body.trim().length >= TAMANHO_MINIMO_PARA_REPETICAO) {
+    const limite = args.similaridadeMaxima ?? 0.8;
+    const repetida = (args.anterioresDaEquipe ?? []).some((anterior) => semelhanca(body, anterior) > limite);
+    if (repetida) {
+      vetos.push({ regra: 'repeticao', motivo: 'Esta mensagem repete uma que a família já recebeu. Diga com outras palavras.' });
+    }
   }
 
   return vetos;
@@ -196,12 +314,26 @@ export async function revisarComModelo(
     );
     const veredito = lerVereditoDoRevisor(call.result.text);
     if (veredito !== null) return veredito;
-    deps.log.warn('def: revisor sem JSON legível — a mensagem segue (falha aberta)');
+    deps.log.warn('def: revisor sem JSON legível');
   } catch (err) {
     if (err instanceof LlmBudgetExceededError) throw err;
-    deps.log.warn('def: revisor falhou — a mensagem segue (falha aberta)', {
+    deps.log.warn('def: revisor falhou', {
       error: (err instanceof Error ? err.message : String(err)).slice(0, 200),
     });
   }
-  return { aprovada: true, regras: [], motivo: '', origem: 'falhou_aberto' };
+  return vereditoSemModelo(suspeitas);
+}
+
+/**
+ * O modelo não respondeu. Sem suspeita do "nunca diga", a mensagem segue (falha
+ * aberta). COM suspeita, segura (P1.2): em clínica, a dúvida vira reescrita.
+ */
+export function vereditoSemModelo(suspeitas: readonly string[]): VereditoDef {
+  if (suspeitas.length === 0) return { aprovada: true, regras: [], motivo: '', origem: 'falhou_aberto' };
+  return {
+    aprovada: false,
+    regras: ['8'],
+    motivo: `Não foi possível confirmar a mensagem. Reescreva sem estas expressões: ${suspeitas.join(' | ')}.`,
+    origem: 'falhou_fechado',
+  };
 }

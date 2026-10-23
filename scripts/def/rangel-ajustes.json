@@ -1,0 +1,71 @@
+{
+  "_leia": "Ajustes do MOTOR sobre o pacote 'Agente de IA · Método DEF · Consulta Dr. Raphael Rangel'. O pacote (documentos 01-05, planilha 04 e Matriz) é a fonte; aqui fica só o que o motor do CRM precisa a mais. Lido por scripts/def/montar-roteiro-rangel.ts.",
+  "modelo_extrator": "gpt-5.6-luna",
+  "modelo_revisor": "gpt-5.6-luna",
+  "equipe": { "dias": [1, 2, 3, 4, 5], "inicio": "08:00", "fim": "17:45" },
+  "agenda": {
+    "opcoes": 2,
+    "reserva_horas": 24,
+    "regras_de_local": [{ "dia": 1, "a_partir_de": "12:00", "local": "Aracruz", "modalidade": "presencial" }]
+  },
+  "acrescimos": {
+    "contato": "Se a família já escreveu \"Quero agendar uma consulta com o Dr. Raphael\", o interesse está confirmado: faça direto o recuo.",
+    "fechamento": "Os 2 horários do passo 5 vêm no bloco HORARIOS: ofereça só esses, do jeito que estão escritos. Sem o bloco, não fale de data.",
+    "reserva": "O horário escolhido aparece no bloco HORARIOS como segurado para a família. Cartão: use a passagem quer_cartao. Comprovante: use a passagem enviou_comprovante.",
+    "decidido": "Se a família ainda não ouviu o valor, informe o valor numa frase (R$ 1.200, presencial ou online), sem comparação e sem a pergunta de condição. Ofereça os 2 horários do bloco HORARIOS.",
+    "cadencia": "Retome de onde a conversa parou, numa mensagem curta. Não faça pergunta nova de Descoberta e não repita uma mensagem que a família já recebeu."
+  },
+  "passagens_extras": [
+    {
+      "intencao": "pergunta_se_e_ia",
+      "acao": "responder",
+      "exclusiva": true,
+      "mensagem": "Sou a assistente virtual da equipe do Dr. Raphael e acompanho o seu atendimento junto com a equipe. Se preferir falar com uma pessoa, eu chamo agora. Quer que eu chame?"
+    },
+    {
+      "intencao": "pediu_depois",
+      "acao": "responder",
+      "mensagem": "Combine a data que a família disse para você voltar a falar e registre o retorno. Não ofereça prioridade de vaga de desistência."
+    },
+    {
+      "intencao": "sem_horario",
+      "acao": "passar",
+      "mensagem": "Vou ver com a equipe os próximos horários do Dr. Raphael e já te passo, combinado?",
+      "fora_do_horario": "A equipe envia os horários a partir das 8h do próximo dia útil."
+    }
+  ],
+  "extrator_extras": [
+    "intenção quer_humano: só quando a família pede para falar com uma pessoa ou atendente.",
+    "intenção pergunta_se_e_ia: a família pergunta se está falando com robô, IA, assistente virtual ou pessoa de verdade. Isso NÃO é quer_humano.",
+    "intenção pergunta_clinica: sintoma, exame, laudo de outro profissional, remédio, dose, canabidiol, \"precisa de neuro?\".",
+    "intenção pergunta_fora_da_base: retorno, consultas a cada 6 meses, encaminhamento, endereço de Aracruz, tipos de laudo.",
+    "intenção quer_data_antes: a família quer data antes da agenda normal (lista de desistência).",
+    "intenção formato_laudo: pede laudo em formato específico (INSS) ou prazo de emissão."
+  ],
+  "revisor": {
+    "base_extra": "Identidade: a Ana Paula é a assistente virtual da equipe do Dr. Raphael e acompanha o atendimento junto com a equipe.",
+    "regras_extras": ["Nega ser assistente virtual ou diz ser uma pessoa (por exemplo \"sou humana\", \"não sou robô\")."],
+    "regex_extras": [
+      "sou (uma )?(humana|pessoa de verdade|pessoa real)",
+      "nao sou (um |uma )?(robo|bot|ia|inteligencia artificial|assistente virtual)"
+    ],
+    "links_permitidos": ["instagram.com/dr.raphaelrangel"],
+    "regex_tom": [
+      { "regex": "\\*\\*|__|(^|\\n)\\s*#{1,6}\\s", "motivo": "Sem markdown (negrito, título): escreva como no WhatsApp." },
+      { "regex": "(^|\\n)\\s*([-*•]|\\d+[.)])\\s", "motivo": "Sem lista: escreva em frases corridas." },
+      { "regex": "[—–]", "motivo": "Sem travessão longo: use vírgula ou ponto." },
+      { "regex": "^\\s*(ótima pergunta|excelente pergunta|fico feliz|entendo perfeitamente|com certeza!)", "motivo": "Não abra com frase pronta de atendimento automático." },
+      { "regex": "espero ter ajudado", "motivo": "Sem \"espero ter ajudado\"." },
+      { "regex": "![\\s\\S]*!", "motivo": "No máximo um ponto de exclamação por mensagem." },
+      { "regex": "(?!😬)\\p{Extended_Pictographic}", "motivo": "Sem emoji (só o 😬 da cadência)." }
+    ],
+    "perguntas_da_ficha": [
+      { "campo": "cidade", "regex": "(qual|em que|de que) cidade|onde (voces |voce )?mora" },
+      { "campo": "idade_anos", "regex": "qual (e )?a idade|quantos anos (ele|ela|o |a |tem)" },
+      { "campo": "nome_crianca", "regex": "qual (e )?o nome (dele|dela|da crianca|do seu filho|da sua filha)" },
+      { "campo": "formato_preferido", "regex": "(online|presencial) (funciona|serve)|presencial ou online|online ou presencial" },
+      { "campo": "decisor", "regex": "decide (junto|sozinh)|decisao e (so )?sua" }
+    ],
+    "similaridade_maxima": 0.8
+  }
+}

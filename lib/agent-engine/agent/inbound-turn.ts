@@ -4881,6 +4881,7 @@ async function executarTurnoDoAgente(
         : null,
       contexto: effectiveContext,
       temMensagemNova: job === null || job.kind === 'inbound_turn',
+      cadencia: job?.kind === 'followup_turn',
       persistir: !preview || preview.kind === 'assisted',
       fuso: fusoDaOrg,
       agora: clock().getTime(),
@@ -5085,14 +5086,17 @@ async function executarTurnoDoAgente(
     // envolve o send_message (por fora da política da prévia — vale no Testar).
     const defTurno = await defEmCurso;
     const tools = defTurno ? defTurno.envolverFerramentas(toolsSemDef) : toolsSemDef;
+    // Com o DEF ativo, as skills, a dica de estágio e o fluxo de atendimento não
+    // entram: competiam com o roteiro (P0.2/P1.4). O roteador do DEF já decide a
+    // etapa, e o roteiro é por agente — é assim que eles saem só deste agente.
     const openingSuffixes = [
       agoraBlock,
-      matchedSkillsBlock,
-      stageHintBlock,
+      defTurno ? '' : matchedSkillsBlock,
+      defTurno ? '' : stageHintBlock,
       defTurno?.bloco ?? '',
       splitHint,
       caseAwaitingLeadBlock,
-      roteiro?.bloco ?? '',
+      defTurno ? '' : (roteiro?.bloco ?? ''),
       preview?.feedback ? '## Revisão humana deste atendimento\n' + preview.feedback : '',
     ].filter((b) => b !== '');
     const openingText =
@@ -5338,6 +5342,13 @@ async function executarTurnoDoAgente(
         throw new Error('envio marcado como failed pelo CRM — run re-tentado pela fila');
       }
       runLog.info('correção do turno mudo concluída', { messages_sent: outcomes.length });
+    }
+
+    // [fork wallaceleite] Método DEF: fecha o turno (KPI N4) e, na prévia, devolve
+    // o resumo (etapa, passagem, vetos) para quem testa — a bateria lê daqui.
+    const resumoDef = defTurno?.finalizar() ?? null;
+    if (preview && resumoDef !== null) {
+      (preview.result as typeof preview.result & { def?: unknown }).def = resumoDef;
     }
 
     // FALHA TERMINAL VISÍVEL — só com sinal de FALHA, nunca por silêncio

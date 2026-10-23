@@ -6,8 +6,20 @@
  * Volátil por natureza — muda a cada turno — e por isso NUNCA vai no prefixo
  * estável (regra do cache de prompt, `edge/llm/stable-prefix.ts`).
  */
+import { descreverVaga, type HorarioDef, type VagaOferecida } from './agenda';
 import { PASSO_DO_FUNIL_DA_ETAPA, type DecisaoDef } from './roteador';
 import type { BlocoDef, FichaDef, PassagemDef, RoteiroDef } from './tipos';
+
+/** O que a agenda decidiu neste turno (ausente = roteiro sem agenda). */
+export interface AgendaDoTurno {
+  /** As vagas a oferecer agora (vazio = nenhuma serve). */
+  vagas: VagaOferecida[];
+  /** A vaga que a família escolheu e ficou segura para ela. */
+  reservada: HorarioDef | null;
+  /** A família escolheu um horário que não está mais livre. */
+  escolhaIndisponivel: boolean;
+  reservaHoras: number;
+}
 
 const ROTULOS: Record<string, string> = {
   perfil: 'perfil',
@@ -74,12 +86,28 @@ function textoDaPassagem(p: PassagemDef, dentroDoHorario: boolean): string {
   return `"${p.mensagem}"${fora}`;
 }
 
+function renderizarAgenda(agenda: AgendaDoTurno): string {
+  if (agenda.reservada) {
+    return `## HORARIOS — horário escolhido (segurado por ${agenda.reservaHoras}h para a família)\n- ${descreverVaga(agenda.reservada)}`;
+  }
+  const aviso = agenda.escolhaIndisponivel
+    ? 'O horário que a família escolheu não está mais livre: diga isso e ofereça estes.\n'
+    : '';
+  if (agenda.vagas.length === 0) return '';
+  return `## HORARIOS — para oferecer (só estes, nesta ordem; nunca invente outra data)\n${aviso}${agenda.vagas
+    .map((v) => `- [${v.rotulo}] ${descreverVaga(v)}`)
+    .join('\n')}`;
+}
+
 export function renderizarBlocosDef(args: {
   roteiro: RoteiroDef;
   decisao: DecisaoDef;
   ficha: FichaDef;
   dentroDoHorario: boolean;
   objecaoAtual: string | null;
+  agenda?: AgendaDoTurno | null;
+  /** Turno de cadência: retomar de onde parou. */
+  cadencia?: boolean;
 }): string {
   const { roteiro, decisao, ficha } = args;
   const partes: string[] = [];
@@ -93,25 +121,42 @@ export function renderizarBlocosDef(args: {
     `No funil, esta etapa corresponde ao passo "${PASSO_DO_FUNIL_DA_ETAPA[decisao.etapa]}": se ainda não estiver nele, marque com update_lead_state.`,
   );
 
-  if (decisao.modo === 'decidido' && roteiro.modos.decidido) {
-    partes.push(`### Atalho: família decidida\n${renderizarBloco(roteiro.modos.decidido)}`);
+  // Atalho do decidido (P1.3): só o bloco do atalho e os horários — o bloco do
+  // fechamento (comparação, condição) não entra.
+  const atalhoDecidido = decisao.modo === 'decidido' && roteiro.modos.decidido !== undefined;
+  if (atalhoDecidido) {
+    const preco = ficha.preco_informado_em ? 'A família já ouviu o valor.' : 'A família ainda NÃO ouviu o valor.';
+    const falta =
+      decisao.faltam.length > 0
+        ? `\n\n### Confirme antes dos horários (uma pergunta por vez)\n${decisao.faltam.map((f) => `- ${f}`).join('\n')}`
+        : '';
+    partes.push(`### Atalho: família decidida\n${renderizarBloco(roteiro.modos.decidido!)}\n\n${preco}${falta}`);
+  }
+  if (args.cadencia && roteiro.modos.cadencia) {
+    partes.push(`## AGORA: CADÊNCIA (a família não respondeu)\n${renderizarBloco(roteiro.modos.cadencia)}`);
   }
   if (decisao.modo === 'retomada' && roteiro.modos.retomada) {
     partes.push(`### Atalho: família que voltou\n${renderizarBloco(roteiro.modos.retomada)}`);
   }
 
-  partes.push(renderizarBloco(etapa));
-  partes.push(
-    decisao.faltam.length === 0
-      ? '### O que falta nesta etapa\n- Nada: conduza para a próxima.'
-      : `### O que falta nesta etapa (uma pergunta por vez)\n${decisao.faltam.map((f) => `- ${f}`).join('\n')}`,
-  );
+  if (!atalhoDecidido) {
+    partes.push(renderizarBloco(etapa));
+    partes.push(
+      decisao.faltam.length === 0
+        ? '### O que falta nesta etapa\n- Nada: conduza para a próxima.'
+        : `### O que falta nesta etapa (uma pergunta por vez)\n${decisao.faltam.map((f) => `- ${f}`).join('\n')}`,
+    );
+  }
+  const blocoDaAgenda = args.agenda ? renderizarAgenda(args.agenda) : '';
+  if (blocoDaAgenda !== '') partes.push(blocoDaAgenda);
 
   partes.push(`## Ficha DEF (o que a família já contou; NÃO pergunte de novo)\n${renderizarFicha(ficha)}`);
 
   for (const r of decisao.respostas) {
     partes.push(
-      `## Responda primeiro (${r.intencao})\nUse o sentido desta mensagem e depois siga a etapa: ${textoDaPassagem(r, args.dentroDoHorario)}`,
+      r.exclusiva
+        ? `## AGORA: RESPONDA SÓ ISTO (${r.intencao})\nEnvie esta mensagem, com o sentido e sem mudar nenhum fato, e não pergunte mais nada neste turno: ${textoDaPassagem(r, args.dentroDoHorario)}`
+        : `## Responda primeiro (${r.intencao})\nUse o sentido desta mensagem e depois siga a etapa: ${textoDaPassagem(r, args.dentroDoHorario)}`,
     );
   }
 

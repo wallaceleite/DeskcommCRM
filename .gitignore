@@ -203,3 +203,6 @@ __pycache__/
 # compose não tem de onde nascer).
 caddy-sites/*
 !caddy-sites/README.caddy
+
+# [fork wallaceleite] roteiros DEF gerados: dado do consultório, fora do repo público
+supabase/fork/roteiros/

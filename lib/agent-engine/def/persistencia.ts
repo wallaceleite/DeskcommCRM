@@ -7,6 +7,7 @@
  */
 import type pg from 'pg';
 import type { Logger } from '../obs/logger';
+import type { HorarioDef } from './agenda';
 import { eEtapaDef, fichaDefSchema, roteiroDefSchema, type EtapaDef, type FichaDef, type RoteiroDef } from './tipos';
 
 export async function carregarRoteiroDef(
@@ -89,7 +90,7 @@ export async function salvarFichaDef(
   );
 }
 
-export type TipoDeEventoDef = 'extracao' | 'etapa' | 'mensagem' | 'revisor' | 'passagem';
+export type TipoDeEventoDef = 'extracao' | 'etapa' | 'mensagem' | 'revisor' | 'passagem' | 'turno' | 'reserva';
 
 export async function registrarEventoDef(
   db: pg.Pool,
@@ -142,5 +143,94 @@ export async function marcarMensagemDef(
     log.warn('def: mensagem não marcada', {
       error: (err instanceof Error ? err.message : String(err)).slice(0, 160),
     });
+  }
+}
+
+// ── HORÁRIOS (P0.3) ─────────────────────────────────────────────────────────
+
+interface LinhaDeHorario {
+  data: string;
+  hora: string;
+  modalidade: HorarioDef['modalidade'];
+  local: string | null;
+  status: HorarioDef['status'];
+  reservado_para: string | null;
+  reserva_ate: Date | null;
+}
+
+/** As vagas do agente que ainda não foram ocupadas (a escolha é de `agenda.ts`). */
+export async function listarHorariosDef(
+  db: pg.Pool,
+  organizationId: string,
+  agentId: string,
+  log: Logger,
+): Promise<HorarioDef[]> {
+  try {
+    const r = await db.query<LinhaDeHorario>(
+      `select to_char(data, 'YYYY-MM-DD') as data, hora, modalidade, local, status, reservado_para, reserva_ate
+         from def_horarios
+        where organization_id = $1 and agent_id = $2 and status <> 'ocupado'
+        order by data, hora`,
+      [organizationId, agentId],
+    );
+    return r.rows.map((l) => ({ ...l, reserva_ate: l.reserva_ate === null ? null : l.reserva_ate.getTime() }));
+  } catch (err) {
+    log.warn('def: horários não lidos', { error: (err instanceof Error ? err.message : String(err)).slice(0, 160) });
+    return [];
+  }
+}
+
+/**
+ * Segura a vaga escolhida para a família por `horas`. Só pega vaga livre, com
+ * reserva vencida ou já desta família — duas famílias nunca seguram a mesma.
+ */
+export async function reservarHorarioDef(
+  db: pg.Pool,
+  args: { organizationId: string; agentId: string; contactId: string; data: string; hora: string; horas: number },
+): Promise<boolean> {
+  const r = await db.query(
+    `update def_horarios
+        set status = 'reservado_provisorio', reservado_para = $3,
+            reserva_ate = now() + make_interval(hours => $6), updated_at = now()
+      where organization_id = $1 and agent_id = $2 and data = $4::date and hora = $5
+        and (status = 'livre'
+             or (status = 'reservado_provisorio' and (reserva_ate is null or reserva_ate <= now() or reservado_para = $3)))`,
+    [args.organizationId, args.agentId, args.contactId, args.data, args.hora, args.horas],
+  );
+  return (r.rowCount ?? 0) > 0;
+}
+
+/** Acrescenta campos à ficha sem reescrever o resto (rotulador, preço enviado). */
+export async function completarFichaDef(
+  db: pg.Pool,
+  log: Logger,
+  args: { organizationId: string; contactId: string; campos: Record<string, unknown>; soSeVazio?: boolean },
+): Promise<void> {
+  try {
+    await db.query(
+      args.soSeVazio
+        ? `update def_fichas set ficha = $3::jsonb || ficha where organization_id = $1 and contact_id = $2`
+        : `update def_fichas set ficha = ficha || $3::jsonb where organization_id = $1 and contact_id = $2`,
+      [args.organizationId, args.contactId, JSON.stringify(args.campos)],
+    );
+  } catch (err) {
+    log.warn('def: ficha não completada', { error: (err instanceof Error ? err.message : String(err)).slice(0, 160) });
+  }
+}
+
+/** Junta os rótulos do rotulador ao evento da mensagem (P1.6). */
+export async function rotularEventoDef(
+  db: pg.Pool,
+  log: Logger,
+  args: { organizationId: string; messageId: string; rotulos: Record<string, unknown> },
+): Promise<void> {
+  try {
+    await db.query(
+      `update def_eventos set dados = dados || $3::jsonb
+        where organization_id = $1 and message_id = $2 and tipo = 'mensagem'`,
+      [args.organizationId, args.messageId, JSON.stringify(args.rotulos)],
+    );
+  } catch (err) {
+    log.warn('def: rótulo não gravado', { error: (err instanceof Error ? err.message : String(err)).slice(0, 160) });
   }
 }
