@@ -310,6 +310,14 @@ PIN_FALTANDO="$(pin_incompleto .env)" || PIN_FALTANDO=""
 # e o próximo ciclo (5 minutos) pega.
 exec 9>"$LOCK"
 flock -n 9 || exit 0
+# [fork wallaceleite] O cadeado só vale para quem passa por aqui: um `update.sh`
+# rodado à mão (SSH) não o segura. Medido em 23/10/2026: o banco levou mais de
+# 10 minutos, a página de manutenção respondeu 503 em dois ciclos, e a vigília
+# voltou a versão anterior NO MEIO da atualização. Com um update vivo, o agente
+# não sonda nem volta nada — o próximo ciclo decide com a troca terminada.
+if pgrep -f "hostgator-setup-kit/update\.sh" >/dev/null 2>&1; then
+  exit 0
+fi
 
 # ── 3. O app caiu logo após uma atualização? (#2757) ───────────────────────
 #
