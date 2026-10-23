@@ -64,6 +64,18 @@ export function perguntouPreco(texto: string): boolean {
   return /\b(quanto|valor|preco|custa|custo|investimento)\b/.test(semAcento(texto));
 }
 
+/**
+ * A família perguntou de valor OU de condição (desconto, Pix, parcela, cartão,
+ * pagamento, taxa)? Responder a condição com o valor não é "preço antes da
+ * hora" — a regra 5 é sobre o valor que a equipe solta sem ser perguntada.
+ */
+export function perguntouValorOuCondicao(texto: string): boolean {
+  return (
+    perguntouPreco(texto) ||
+    /\b(desconto|pix|parcel\w*|cartao|pagamento|pagar|taxa|a vista|vezes)\b/.test(semAcento(texto))
+  );
+}
+
 /** Termina em pergunta? (o emoji depois do "?", como o 😬 da cadência, não conta) */
 export function terminaEmPergunta(body: string): boolean {
   return body.replace(/[\s\p{Extended_Pictographic}\uFE0F]+$/u, '').endsWith('?');
@@ -143,6 +155,8 @@ export function checagensDeCodigo(args: {
   modo: ModoDef;
   intencoes: readonly IntencaoDef[];
   linksPermitidos: readonly string[];
+  /** A última mensagem da família pergunta de valor ou condição (libera a regra 5). */
+  familiaPerguntouValor?: boolean;
   /** Marcas de texto de IA do roteiro (`revisor.regex_tom`). */
   regexTom?: readonly { regex: string; motivo: string }[];
   /** Perguntas sobre campo já preenchido (`revisor.perguntas_da_ficha`). */
@@ -189,6 +203,7 @@ export function checagensDeCodigo(args: {
   if (
     ANTES_DO_PRECO.includes(args.etapa) &&
     !args.intencoes.includes('pergunta_preco') &&
+    args.familiaPerguntouValor !== true &&
     /\b1\.?200\b|\b3\s?x\b|tres vezes sem juros/.test(texto)
   ) {
     vetos.push({

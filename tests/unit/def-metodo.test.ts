@@ -233,6 +233,8 @@ describe("revisor DEF: as checagens por código do documento 05", () => {
     expect(checar("A consulta é R$ 1.200. Para quem é?")).toContain("5");
     expect(checar("A consulta é R$ 1.200. Para quem é?", { intencoes: ["pergunta_preco"] })).toEqual([]);
     expect(checar("A consulta é R$ 1.200, em até 3x. Fica bem acessível, né?", { etapa: "fechamento" })).toEqual([]);
+    // perguntou de desconto/Pix: responder a condição com o 3x não é preço antes da hora
+    expect(checar("Hoje não temos desconto à vista. Dá para dividir em até 3x sem juros. Assim fica bom?", { familiaPerguntouValor: true })).toEqual([]);
   });
 
   it("6: não informa a duração da consulta", () => {

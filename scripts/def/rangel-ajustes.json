@@ -1,7 +1,7 @@
 {
   "_leia": "Ajustes do MOTOR sobre o pacote 'Agente de IA · Método DEF · Consulta Dr. Raphael Rangel'. O pacote (documentos 01-05, planilha 04 e Matriz) é a fonte; aqui fica só o que o motor do CRM precisa a mais. Lido por scripts/def/montar-roteiro-rangel.ts.",
   "modelo_extrator": "gpt-5.6-luna",
-  "modelo_revisor": "gpt-5.6-luna",
+  "modelo_revisor": "gpt-5.6-terra",
   "equipe": {
     "dias": [
       1,

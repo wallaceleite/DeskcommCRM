@@ -40,6 +40,7 @@ import {
   eAvisoDePagamento,
   limiteDoTurno,
   perguntouPreco,
+  perguntouValorOuCondicao,
   revisarComModelo,
   SEM_PERGUNTA,
   terminaEmPergunta,
@@ -335,6 +336,8 @@ export async function iniciarTurnoDef(args: {
 
     const bloco = renderizarBlocosDef({ roteiro, decisao, ficha, dentroDoHorario, objecaoAtual, agenda, cadencia: args.cadencia === true });
     const nome = args.contexto.contact.name ?? ficha.nome_responsavel ?? null;
+    const ultimaDaFamilia = [...args.contexto.messages].reverse().find((m) => m.direction === 'inbound');
+    const familiaPerguntouValor = ultimaDaFamilia !== undefined && perguntouValorOuCondicao(ultimaDaFamilia.body);
     // O que a equipe já mandou nesta conversa (régua da repetição).
     const anterioresDaEquipe = args.contexto.messages.filter((m) => m.direction === 'outbound').map((m) => m.body);
 
@@ -350,6 +353,7 @@ export async function iniciarTurnoDef(args: {
           roteiro,
           decisao,
           intencoes,
+          familiaPerguntouValor,
           ficha,
           nome,
           ids,
@@ -400,6 +404,7 @@ function envolverComRevisor(
     roteiro: RoteiroDef;
     decisao: DecisaoDef;
     intencoes: IntencaoDef[];
+    familiaPerguntouValor: boolean;
     ficha: FichaDef;
     nome: string | null;
     ids: { tenantId: string; leadId: string | null; jobId?: string; agentId: string | null };
@@ -568,6 +573,7 @@ function envolverComRevisor(
       etapa: ctx.decisao.etapa,
       modo: ctx.decisao.modo,
       intencoes: ctx.intencoes,
+      familiaPerguntouValor: ctx.familiaPerguntouValor,
       linksPermitidos: ctx.roteiro.revisor.links_permitidos,
       regexTom: ctx.roteiro.revisor.regex_tom,
       perguntasDaFicha: ctx.roteiro.revisor.perguntas_da_ficha,
@@ -612,10 +618,14 @@ function envolverComRevisor(
       }
       // Segunda reprovação: a família recebe o aviso de espera e a equipe assume.
       encerrado = true;
-      // Na urgência a família recebe a orientação de urgência, nunca "já te respondo".
-      const urgencia = ctx.decisao.modo === 'urgencia' ? ctx.decisao.passagem : null;
-      const textoDaUrgencia = urgencia ? prepararMensagemDePassagem(urgencia.mensagem, ctx.nome, ctx.ficha) : null;
-      const aviso = await enviarPromessaDeEquipe(textoDaUrgencia ?? mensagemDeEspera(ctx.roteiro, ctx.nome), options);
+      // Na urgência e na passagem, a família recebe a mensagem do ROTEIRO para o
+      // caso (a orientação de urgência, a passagem da planilha), nunca "já te
+      // respondo" — que só sobra quando o turno não tinha passagem.
+      const porta =
+        (ctx.decisao.modo === 'urgencia' || ctx.decisao.modo === 'passagem') && ctx.decisao.passagem
+          ? prepararMensagemDePassagem(ctx.decisao.passagem.mensagem, ctx.nome, ctx.ficha)
+          : null;
+      const aviso = await enviarPromessaDeEquipe(porta ?? mensagemDeEspera(ctx.roteiro, ctx.nome), options);
       await passarParaEquipe({}, options, 'O revisor de compliance reprovou a resposta duas vezes neste turno.');
       return {
         ok: false,
