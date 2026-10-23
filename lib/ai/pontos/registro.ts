@@ -327,6 +327,31 @@ export const PONTOS_DE_IA: readonly PontoDeIa[] = [
         "Lê a última mensagem do cliente, sozinha, e escolhe entre as intenções do seu roteador qual agente deve atender.",
     },
   },
+  // [fork wallaceleite] Método DEF (lib/agent-engine/def/).
+  {
+    id: "def_extrator",
+    rotulo: "Preencher a ficha do método de vendas",
+    oQueFaz:
+      "Lê a conversa e anota na ficha o que a família já contou, para o agente seguir as etapas do método de vendas.",
+    papel: "entender",
+    exige: {},
+    emissor: "lib/agent-engine/def/extrator.ts",
+    sintomaDeFalha:
+      "O agente volta a perguntar o que a família já respondeu e não avança de etapa no método de vendas.",
+    registraEm: "llm_calls",
+  },
+  {
+    id: "def_revisor",
+    rotulo: "Revisar a resposta antes do envio",
+    oQueFaz:
+      "Confere cada resposta contra as regras do consultório antes de ela sair, e devolve para reescrever o que não pode ser dito.",
+    papel: "entender",
+    exige: {},
+    emissor: "lib/agent-engine/def/revisor.ts",
+    sintomaDeFalha:
+      "Frases proibidas pelo manual do consultório podem chegar à família sem ninguém barrar.",
+    registraEm: "llm_calls",
+  },
   {
     id: "stage_classifier",
     rotulo: "Identificar a etapa do lead",

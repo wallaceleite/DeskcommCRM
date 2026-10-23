@@ -12,6 +12,8 @@ export async function testAgentVersion(
     runId: string;
     sampleMessage: string;
     sampleContact?: { name?: string; phone?: string };
+    /** [fork wallaceleite] Ensaio: as mensagens anteriores, da mais antiga à mais nova. */
+    history?: ReadonlyArray<{ direction: "inbound" | "outbound"; body: string }>;
     channelId: string | null;
   },
 ) {
@@ -23,12 +25,20 @@ export async function testAgentVersion(
   );
   if (!agent) throw new Error("preview_version_unavailable");
   const result = newPreviewResult();
+  const agora = (deps.clock?.() ?? new Date()).getTime();
+  const anteriores = input.history ?? [];
   const context = scenarioContext(
     [
+      // Um minuto entre as mensagens do ensaio, terminando um minuto antes de agora.
+      ...anteriores.map((m, i) => ({
+        direction: m.direction,
+        body: m.body,
+        sent_at: new Date(agora - (anteriores.length - i) * 60_000).toISOString(),
+      })),
       {
-        direction: "inbound",
+        direction: "inbound" as const,
         body: input.sampleMessage,
-        sent_at: (deps.clock?.() ?? new Date()).toISOString(),
+        sent_at: new Date(agora).toISOString(),
       },
     ],
     input.sampleContact,

@@ -242,6 +242,8 @@ export const AUDIT_ACTIONS = [
   // porque muda o que o sistema confere antes de falar com o cliente — e porque
   // custa dinheiro por mensagem.
   "ai.guardrail_layer_changed",
+  // [fork wallaceleite] Método DEF: o roteiro de vendas de um agente foi gravado.
+  "def.roteiro_atualizado",
   "ai_agent.run_started",
   "ai_agent.run_completed",
   "ai_agent.run_failed",

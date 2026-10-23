@@ -4416,6 +4416,25 @@ export const DICIONARIO: Traducoes = {
   "A conversa cai sempre no mesmo agente, ou em nenhum — como se os roteadores que você configurou não existissem.": {
     es: "La conversación cae siempre en el mismo agente, o en ninguno — como si los enrutadores que configuraste no existieran.",
   },
+  // [fork wallaceleite] Método DEF.
+  "Preencher a ficha do método de vendas": {
+    es: "Completar la ficha del método de ventas",
+  },
+  "Lê a conversa e anota na ficha o que a família já contou, para o agente seguir as etapas do método de vendas.": {
+    es: "Lee la conversación y anota en la ficha lo que la familia ya contó, para que el agente siga las etapas del método de ventas.",
+  },
+  "O agente volta a perguntar o que a família já respondeu e não avança de etapa no método de vendas.": {
+    es: "El agente vuelve a preguntar lo que la familia ya respondió y no avanza de etapa en el método de ventas.",
+  },
+  "Revisar a resposta antes do envio": {
+    es: "Revisar la respuesta antes del envío",
+  },
+  "Confere cada resposta contra as regras do consultório antes de ela sair, e devolve para reescrever o que não pode ser dito.": {
+    es: "Revisa cada respuesta contra las reglas del consultorio antes de que salga, y la devuelve para reescribir lo que no se puede decir.",
+  },
+  "Frases proibidas pelo manual do consultório podem chegar à família sem ninguém barrar.": {
+    es: "Frases prohibidas por el manual del consultorio pueden llegar a la familia sin que nadie las detenga.",
+  },
   "Identificar a etapa do lead": {
     es: "Identificar la etapa del lead",
   },

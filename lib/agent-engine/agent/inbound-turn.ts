@@ -147,6 +147,8 @@ import {
   type StageClassifierKnobs,
 } from './stage-classifier';
 import { classificadoresDoTurno } from './classificadores-do-turno';
+// [fork wallaceleite] Método DEF.
+import { iniciarTurnoDef } from '../def/turno';
 import { loadPlaybook } from './playbook';
 import { promessasEmAberto } from './declaracao';
 import {
@@ -4847,7 +4849,7 @@ async function executarTurnoDoAgente(
             conferirAfirmacoes,
           )
         : rawTools;
-    const tools = envolverFerramentasComTraco(
+    const toolsSemDef = envolverFerramentasComTraco(
       wrapToolsWithBreaker(previewTools, {
         thresholds: deps.knobs.breaker,
         readOnlyTools: READ_ONLY_TOOLS,
@@ -4858,6 +4860,31 @@ async function executarTurnoDoAgente(
       // justamente a que mais falta faz numa investigação (#2869).
       input.tracoDoTurno?.coletor,
     );
+    // [fork wallaceleite] Método DEF (lib/agent-engine/def/turno.ts). Começa aqui
+    // para o extrator correr junto com os classificadores abaixo; o bloco e o
+    // revisor entram antes da chamada do modelo. Sem roteiro ativo: `null`.
+    const defEmCurso = iniciarTurnoDef({
+      pool,
+      llmCfg: deps.llmCfg,
+      ...(deps.registry !== undefined ? { registry: deps.registry } : {}),
+      log: runLog,
+      tenantId,
+      leadId,
+      ...(job?.id !== undefined ? { jobId: job.id } : {}),
+      agente: agentConfig
+        ? {
+            agentId: agentConfig.agentId,
+            model: agentConfig.model,
+            provider: agentConfig.provider,
+            credentialId: agentConfig.credentialId,
+          }
+        : null,
+      contexto: effectiveContext,
+      temMensagemNova: job === null || job.kind === 'inbound_turn',
+      persistir: !preview || preview.kind === 'assisted',
+      fuso: fusoDaOrg,
+      agora: clock().getTime(),
+    });
 
     // F3-11: stage-classifier auxiliar. Roda ANTES do turno (modelo BARATO pelo seam
     // agnóstico) e sugere o estágio; a sugestão entra como HINT no SUFIXO por-lead — o modelo
@@ -5054,10 +5081,15 @@ async function executarTurnoDoAgente(
     // ponto só cobre os três — e alcança de carona a chamada de fechamento, que
     // reusa `openingTextOnly` e é onde nasce o `prazo` ISO da declaração.
     const agoraBlock = renderAgora(clock(), fusoDaOrg);
+    // [fork wallaceleite] Método DEF: o bloco da etapa vai no sufixo, e o revisor
+    // envolve o send_message (por fora da política da prévia — vale no Testar).
+    const defTurno = await defEmCurso;
+    const tools = defTurno ? defTurno.envolverFerramentas(toolsSemDef) : toolsSemDef;
     const openingSuffixes = [
       agoraBlock,
       matchedSkillsBlock,
       stageHintBlock,
+      defTurno?.bloco ?? '',
       splitHint,
       caseAwaitingLeadBlock,
       roteiro?.bloco ?? '',

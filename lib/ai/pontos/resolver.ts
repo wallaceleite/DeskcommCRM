@@ -236,6 +236,9 @@ export const PONTOS_QUE_HERDAM_DO_AGENTE: ReadonlySet<string> = new Set([
   // `PONTOS_DO_AGENTE_PUBLICADO`: lá a escolha pertence à versão publicada, o
   // painel vira somente leitura, e "configurável por organização" morreria.
   "case_chat",
+  // [fork wallaceleite] Método DEF: extrator e revisor usam o provedor do agente.
+  "def_extrator",
+  "def_revisor",
 ]);
 
 /**

@@ -174,6 +174,7 @@ export async function POST(req: NextRequest, ctx: Ctx): Promise<Response> {
       runId: runRow.id,
       sampleMessage: parsed.data.sample_message,
       sampleContact: parsed.data.sample_contact,
+      ...(parsed.data.history !== undefined ? { history: parsed.data.history } : {}),
       channelId: version.channel_session_id,
     });
     const finalText = result.candidates.map((c) => c.body).join("\n\n");

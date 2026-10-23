@@ -461,6 +461,17 @@ if [ -f supabase/baseline.sql ]; then
     c_ylw "  O app pode ainda funcionar."
     orientar_banco_incompleto
   fi
+  # [fork wallaceleite] O schema próprio do fork (Método DEF), idempotente, logo
+  # depois do baseline e ainda com o que fala com o banco pausado. Arquivo à parte
+  # para não colidir com o baseline do upstream a cada merge.
+  if [ -f supabase/fork/rangel.sql ]; then
+    if reaplicar_baseline "$PROJECT_DIR/supabase/fork/rangel.sql" "$PROJECT_DIR/.deskcomm-banco-fork.log"; then
+      c_grn "✓ schema do fork aplicado."
+    else
+      c_ylw "⚠ o schema do fork teve avisos:"
+      listar_erros_do_banco "$BASELINE_INESPERADO" 20
+    fi
+  fi
   # ── E AS REGRAS DE ISOLAMENTO SÃO CONFERIDAS ──────────────────────────────
   #
   # ## Por que isto existe
