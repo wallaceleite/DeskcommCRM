@@ -195,6 +195,67 @@ describe("roteador DEF: o modo do turno pela intenção", () => {
   });
 });
 
+describe("fluxo enxuto (pedido do Dr.): perguntas curtas numa ordem fixa", () => {
+  const ENXUTO: RoteiroDef = { ...ROTEIRO, fluxo: "enxuto" };
+  const enxuto = (ficha: FichaDef, extra: Partial<Parameters<typeof decidirEtapaDef>[0]> = {}) =>
+    decidir(ficha, { roteiro: ENXUTO, equipeJaFalou: true, ...extra });
+
+  it("1ª mensagem: apresentação e a primeira pergunta juntas, sem recuo", () => {
+    const d = enxuto({}, { equipeJaFalou: false });
+    expect(d.etapa).toBe("contato");
+    expect(d.faltam).toEqual(["apresentar-se em uma frase e, na mesma mensagem, perguntar: nome e idade do paciente"]);
+  });
+
+  it("a família respondeu nome e idade: sai do contato e a próxima é a cidade", () => {
+    const d = enxuto({ nome_crianca: "Pedro", idade_anos: 7 });
+    expect(d.etapa).toBe("descoberta");
+    expect(d.faltam[0]).toBe("cidade e estado (ou país)");
+  });
+
+  it("a ordem: cidade, primeira consulta, diagnóstico, modalidade", () => {
+    const base: FichaDef = { idade_anos: 7, cidade: "Vitória" };
+    expect(enxuto(base).faltam[0]).toBe("se é a primeira consulta ou se já é paciente");
+    expect(enxuto({ ...base, ja_e_paciente: "nao" }).faltam[0]).toBe("se já tem diagnóstico ou está em investigação");
+    expect(enxuto({ ...base, ja_e_paciente: "nao", tem_diagnostico: "investigando" }).faltam).toEqual([
+      "modalidade: online ou presencial",
+    ]);
+  });
+
+  it("acompanhamento só para quem já tem diagnóstico", () => {
+    const base: FichaDef = { idade_anos: 7, cidade: "Vitória", ja_e_paciente: "nao", tem_diagnostico: "sim" };
+    expect(enxuto(base).faltam[0]).toBe("se faz acompanhamento com outros profissionais");
+    expect(enxuto({ ...base, acompanhamento_atual: ["nenhum"] }).faltam[0]).toBe("modalidade: online ou presencial");
+  });
+
+  it("tudo respondido: vai direto ao valor com horários, sem Encantamento nem Isolamento", () => {
+    const ficha: FichaDef = {
+      idade_anos: 7,
+      cidade: "Vitória",
+      ja_e_paciente: "nao",
+      tem_diagnostico: "investigando",
+      formato_preferido: "presencial",
+    };
+    const d = enxuto(ficha);
+    expect(d.etapa).toBe("fechamento");
+    expect(d.faltam).toEqual(["apresentar o que está incluso e o valor, e oferecer os horários"]);
+    expect(enxuto({ ...ficha, horario_escolhido: "2026-11-18 14:00" }).etapa).toBe("reserva");
+  });
+
+  it("o DEF completo não muda: sem `fluxo`, a descoberta ainda pede motivo, decisor e acordo", () => {
+    const d = decidir({ idade_anos: 7, cidade: "Vitória", ja_e_paciente: "nao", tem_diagnostico: "investigando", formato_preferido: "online" }, { equipeJaFalou: true });
+    expect(d.etapa).toBe("contato");
+    expect(faltamNaEtapa("descoberta", { idade_anos: 7, cidade: "Vitória", formato_preferido: "online" })).toContain("quem decide");
+  });
+
+  it("o bloco mostra só o próximo passo", () => {
+    const decisao = enxuto({ idade_anos: 7 });
+    const bloco = renderizarBlocosDef({ roteiro: ENXUTO, decisao, ficha: { idade_anos: 7 }, dentroDoHorario: true, objecaoAtual: null });
+    expect(bloco).toContain("### Próximo passo (só este");
+    expect(bloco).toContain("- cidade e estado (ou país)");
+    expect(bloco).not.toContain("se é a primeira consulta");
+  });
+});
+
 describe("revisor DEF: as checagens por código do documento 05", () => {
   const checar = (body: string, extra: Partial<Parameters<typeof checagensDeCodigo>[0]> = {}) =>
     checagensDeCodigo({
@@ -205,6 +266,14 @@ describe("revisor DEF: as checagens por código do documento 05", () => {
       linksPermitidos: ROTEIRO.revisor.links_permitidos,
       ...extra,
     }).map((v) => v.regra);
+
+  it("tamanho: acima do teto é vetada; urgência nunca", () => {
+    const longa = "A consulta inclui os questionários digitais antes do encontro. ".repeat(6) + "Qual fica melhor?";
+    expect(checar(longa, { maxCaracteres: 350 })).toContain("tamanho");
+    expect(checar(longa)).not.toContain("tamanho");
+    expect(checar(longa, { maxCaracteres: 350, modo: "urgencia" })).not.toContain("tamanho");
+    expect(checar("Qual a idade dele?", { maxCaracteres: 350 })).toEqual([]);
+  });
 
   it("aprova a mensagem curta que termina em pergunta", () => {
     expect(checar("Qual a idade dele?")).toEqual([]);

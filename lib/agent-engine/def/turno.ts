@@ -146,9 +146,10 @@ export function resumoCurtoDaFicha(etapa: EtapaDef, ficha: FichaDef): string {
 }
 
 /** Etapas em que a família pode precisar de horário agora. */
-function precisaDeHorario(decisao: DecisaoDef, ficha: FichaDef): boolean {
+function precisaDeHorario(decisao: DecisaoDef, ficha: FichaDef, fluxo: RoteiroDef['fluxo']): boolean {
   if (decisao.etapa === 'reserva') return true;
-  if (decisao.modo === 'decidido') return decisao.etapa === 'fechamento';
+  // No fluxo enxuto o valor e os horários saem no mesmo turno.
+  if (decisao.modo === 'decidido' || fluxo === 'enxuto') return decisao.etapa === 'fechamento';
   return decisao.etapa === 'fechamento' && (ficha.reacao_preco === 'sim' || ficha.reacao_preco === 'sim_sem_firmeza');
 }
 
@@ -227,6 +228,7 @@ export async function iniciarTurnoDef(args: {
       intencoes,
       objecaoAtual,
       retomada: args.temMensagemNova && houveRetomada(args.contexto),
+      equipeJaFalou: args.contexto.messages.some((m) => m.direction === 'outbound'),
     });
     const dentroDoHorario = equipeNoHorario(roteiro.equipe, args.agora, args.fuso);
 
@@ -272,13 +274,13 @@ export async function iniciarTurnoDef(args: {
         if (escolhaIndisponivel) ficha = { ...ficha, horario_escolhido: null };
       }
       const vagas =
-        reservada === null && precisaDeHorario(decisao, ficha)
+        reservada === null && precisaDeHorario(decisao, ficha, roteiro.fluxo)
           ? escolherVagas({ horarios, roteiro, formato: ficha.formato_preferido, agora: agoraLocal, contactId })
           : [];
       agenda = { vagas, reservada, escolhaIndisponivel, reservaHoras };
       // Sem vaga para oferecer: a equipe assume. Nunca inventar data.
       const semHorario = roteiro.passagens.find((p) => p.intencao === 'sem_horario');
-      if (reservada === null && vagas.length === 0 && precisaDeHorario(decisao, ficha) && decisao.passagem === null && semHorario) {
+      if (reservada === null && vagas.length === 0 && precisaDeHorario(decisao, ficha, roteiro.fluxo) && decisao.passagem === null && semHorario) {
         decisao = { ...decisao, passagem: semHorario, modo: 'passagem' };
       }
       if (reservada !== null && contactId !== null && args.persistir) {
@@ -580,6 +582,7 @@ function envolverComRevisor(
       ficha: ctx.ficha,
       anterioresDaEquipe: [...ctx.anterioresDaEquipe, ...enviados],
       similaridadeMaxima: ctx.roteiro.revisor.similaridade_maxima,
+      ...(ctx.roteiro.revisor.max_caracteres !== undefined ? { maxCaracteres: ctx.roteiro.revisor.max_caracteres } : {}),
     });
     if (vetosDeCodigo.length > 0) {
       veredito = {

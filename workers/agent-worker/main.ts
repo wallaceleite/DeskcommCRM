@@ -306,6 +306,8 @@ export async function startWorker(
       debounceMs: env.INBOUND_DEBOUNCE_MS,
       reapTimeoutMs: env.CRM_EVENT_REAP_TIMEOUT_MS,
       allowlistTtlMs: env.AI_ALLOWLIST_TTL_DAYS * 24 * 60 * 60 * 1000,
+      // [fork wallaceleite] Os 5 minutos que as 20 voltas davam com o ocioso de 15 s.
+      limiteMinimoParadoMs: 300_000,
     },
     log,
     loopsAbort.signal,

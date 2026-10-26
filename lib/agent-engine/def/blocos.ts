@@ -32,6 +32,7 @@ const ROTULOS: Record<string, string> = {
   formato_preferido: 'formato',
   tem_diagnostico: 'diagnóstico',
   acompanhamento_atual: 'acompanhamento',
+  ja_e_paciente: 'já é paciente',
   motivo: 'motivo',
   motivo_texto: 'motivo (nas palavras da família)',
   prazo: 'prazo',
@@ -144,7 +145,9 @@ export function renderizarBlocosDef(args: {
     partes.push(
       decisao.faltam.length === 0
         ? '### O que falta nesta etapa\n- Nada: conduza para a próxima.'
-        : `### O que falta nesta etapa (uma pergunta por vez)\n${decisao.faltam.map((f) => `- ${f}`).join('\n')}`,
+        : roteiro.fluxo === 'enxuto'
+          ? `### Próximo passo (só este, numa mensagem curta, com uma pergunta fechada)\n- ${decisao.faltam[0]}`
+          : `### O que falta nesta etapa (uma pergunta por vez)\n${decisao.faltam.map((f) => `- ${f}`).join('\n')}`,
     );
   }
   const blocoDaAgenda = args.agenda ? renderizarAgenda(args.agenda) : '';

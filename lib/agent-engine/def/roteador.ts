@@ -13,6 +13,7 @@ import {
   ETAPAS_DEF,
   type EtapaDef,
   type FichaDef,
+  type FluxoDef,
   type IntencaoDef,
   type PassagemDef,
   type RoteiroDef,
@@ -49,8 +50,58 @@ function respondeuContexto(f: FichaDef): boolean {
   );
 }
 
+/** O que o fluxo enxuto pergunta antes do valor, NA ORDEM em que pergunta. */
+export function faltamNaDescobertaEnxuta(f: FichaDef): string[] {
+  const falta: string[] = [];
+  if (f.idade_anos === undefined || f.idade_anos === null) falta.push('nome e idade do paciente');
+  if (!preenchido(f.cidade)) falta.push('cidade e estado (ou país)');
+  if (f.ja_e_paciente === undefined || f.ja_e_paciente === 'nao_informado') {
+    falta.push('se é a primeira consulta ou se já é paciente');
+  }
+  if (f.tem_diagnostico === undefined || f.tem_diagnostico === 'nao_informado') {
+    falta.push('se já tem diagnóstico ou está em investigação');
+  } else if (f.tem_diagnostico === 'sim' && (f.acompanhamento_atual ?? []).length === 0) {
+    // Só quem já tem diagnóstico: quem busca diagnóstico segue sem esta pergunta.
+    falta.push('se faz acompanhamento com outros profissionais');
+  }
+  if (f.formato_preferido === undefined || f.formato_preferido === 'nao_informado') {
+    falta.push('modalidade: online ou presencial');
+  }
+  return falta;
+}
+
+/** O critério do fluxo enxuto, ou `undefined` onde ele é igual ao do DEF. */
+function faltamNoFluxoEnxuto(etapa: EtapaDef, f: FichaDef, equipeJaFalou: boolean): string[] | undefined {
+  switch (etapa) {
+    case 'contato':
+      // A apresentação vai na mesma mensagem da primeira pergunta; sem recuo.
+      if (!equipeJaFalou) {
+        const primeira = faltamNaDescobertaEnxuta(f)[0];
+        return [`apresentar-se em uma frase${primeira ? ` e, na mesma mensagem, perguntar: ${primeira}` : ''}`];
+      }
+      return respondeuContexto(f) || preenchido(f.preco_informado_em) ? [] : ['a família responder à primeira pergunta'];
+    case 'descoberta':
+      return faltamNaDescobertaEnxuta(f);
+    case 'encantamento':
+    case 'isolamento':
+      return [];
+    case 'fechamento':
+      return preenchido(f.horario_escolhido) ? [] : ['apresentar o que está incluso e o valor, e oferecer os horários'];
+    default:
+      return undefined;
+  }
+}
+
 /** O critério de saída de cada etapa, como lista do que ainda falta (vazia = sai). */
-export function faltamNaEtapa(etapa: EtapaDef, f: FichaDef): string[] {
+export function faltamNaEtapa(
+  etapa: EtapaDef,
+  f: FichaDef,
+  ctx: { fluxo?: FluxoDef; equipeJaFalou?: boolean } = {},
+): string[] {
+  if (ctx.fluxo === 'enxuto') {
+    const enxuto = faltamNoFluxoEnxuto(etapa, f, ctx.equipeJaFalou ?? true);
+    if (enxuto !== undefined) return enxuto;
+  }
   switch (etapa) {
     case 'contato': {
       if (respondeuContexto(f) && (f.recuo_estrategico_feito === true || preenchido(f.preco_informado_em))) {
@@ -128,8 +179,11 @@ export function decidirEtapaDef(args: {
   objecaoAtual: string | null;
   /** A família voltou depois de um silêncio longo (ver `turno.ts`). */
   retomada: boolean;
+  /** A equipe já mandou alguma mensagem neste atendimento (fluxo enxuto). */
+  equipeJaFalou?: boolean;
 }): DecisaoDef {
   const { roteiro, ficha: f, etapaAnterior, intencoes } = args;
+  const ctx = { fluxo: roteiro.fluxo, equipeJaFalou: args.equipeJaFalou ?? true };
   const passagemDa = (intencao: IntencaoDef) => roteiro.passagens.find((p) => p.intencao === intencao) ?? null;
 
   // ── a etapa ────────────────────────────────────────────────────────────────
@@ -148,7 +202,7 @@ export function decidirEtapaDef(args: {
   }
 
   // Avança enquanto o critério de saída estiver cumprido. Nunca volta.
-  while (indice(etapa) < ETAPAS_DEF.length - 1 && faltamNaEtapa(etapa, f).length === 0) {
+  while (indice(etapa) < ETAPAS_DEF.length - 1 && faltamNaEtapa(etapa, f, ctx).length === 0) {
     etapa = ETAPAS_DEF[indice(etapa) + 1]!;
   }
 
@@ -182,7 +236,7 @@ export function decidirEtapaDef(args: {
   }
 
   const faltam =
-    modo === 'decidido' && indice(etapa) < indice('fechamento') ? faltamNoAtalhoDecidido(f) : faltamNaEtapa(etapa, f);
+    modo === 'decidido' && indice(etapa) < indice('fechamento') ? faltamNoAtalhoDecidido(f) : faltamNaEtapa(etapa, f, ctx);
   return { etapa, etapaAnterior, modo, passagem, respostas, faltam };
 }
 

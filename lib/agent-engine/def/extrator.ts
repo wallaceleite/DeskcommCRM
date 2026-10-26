@@ -45,7 +45,8 @@ Campos da ficha e valores permitidos:
 - nome_crianca, nome_responsavel, cidade, uf: texto ou null
 - formato_preferido: presencial | online | indiferente | nao_informado
 - tem_diagnostico: sim | nao | investigando | nao_informado
-- acompanhamento_atual: lista (psicologo, fono, aba, to, psicopedagogo, outro)
+- ja_e_paciente: sim (já se consultou com o médico, é retorno) | nao (primeira consulta) | nao_informado
+- acompanhamento_atual: lista (psicologo, fono, aba, to, psicopedagogo, outro; "nenhum" quando a família disse que não faz acompanhamento)
 - motivo: suspeita | escola_pediu | encaminhamento | laudo | segunda_opiniao | revisao_medicacao | sem_acesso | beneficio | outro | null
 - motivo_texto: frase curta nas palavras da família
 - prazo: {"data": texto ou null, "finalidade": escola | inss | terapia | empresa | outro} ou null

@@ -56,6 +56,12 @@ export interface DrainKnobs {
   /** Evento 'processing' órfão volta a 'pending' após isto. */
   reapTimeoutMs: number;
   /**
+   * [fork wallaceleite] Piso do limite de "laço parado" do `/healthz`. Com o
+   * ocioso curto (2 s), 20 voltas dariam só 40 s, e um lote lento acusaria
+   * parada. Ausente = só as 20 voltas.
+   */
+  limiteMinimoParadoMs?: number;
+  /**
    * Janela de validade da autorização de IA de um contato (gate 'allowlist').
    * Só consultada em canal com `metadata.ai_gate = 'allowlist'`. Ausente nos
    * testes que não exercitam o gate — o default de 21 dias em ms é aplicado.
@@ -510,10 +516,17 @@ async function processEvent(
   //
   // A janela e a exclusão do job em HOLD (`held_run_after` no payload — a lição
   // do #830) moram em ./debounce.ts, com teste próprio.
+  //
+  // [fork wallaceleite] A janela conta da CHEGADA da mensagem (o evento), não
+  // da hora em que este tick a viu: ancorada no tick, a espera do drain ocioso
+  // somava à janela inteira, e a família esperava janela + até um intervalo
+  // ocioso antes do "digitando…".
+  const chegada = Date.parse(event.created_at);
   const rajada = await decidirRajada(
     pool,
     { organizationId: event.organization_id, contactId: p.contact_id },
     await debounceDoEvento(pool, event, p, knobs.debounceMs, log),
+    Number.isFinite(chegada) ? Math.min(chegada, Date.now()) : Date.now(),
   );
   if (rajada.tipo === 'coalescido') {
     log.info('drain: rajada coalescida em job pendente', {
@@ -611,7 +624,7 @@ export async function runDrainLoop(
   // O carimbo de vida (#2505): o limite nasce do intervalo ocioso DA INSTALAÇÃO
   // e o carimbo é gravado quando o laço começa e ao FIM de cada volta — um tick
   // que travar deixa o carimbo envelhecer, e é isso que o `/healthz` lê.
-  vigilancia.limiteMs = knobs.idleIntervalMs * TICKS_PARA_PARADO;
+  vigilancia.limiteMs = Math.max(knobs.idleIntervalMs * TICKS_PARA_PARADO, knobs.limiteMinimoParadoMs ?? 0);
   vigilancia.ultimoTickEm = Date.now();
   while (!signal.aborted) {
     let drained = 0;

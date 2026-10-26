@@ -459,3 +459,34 @@ it("anti-backlog: ordena a última inbound por coalesce(sent_at, created_at), n�
   expect(consultaUltima).toContain('coalesce(sent_at, created_at) desc');
   expect(consultaUltima).not.toContain('nulls last');
 });
+
+/**
+ * [fork wallaceleite] A janela de rajada conta da CHEGADA da mensagem.
+ *
+ * Ancorada na hora do tick, a espera do drain ocioso somava à janela: com
+ * ocioso de 15 s e janela de 12 s, a família esperava até 27 s pelo
+ * "digitando…". Aqui o evento chegou há 10 s com janela de 4 s: o job nasce
+ * com `run_after` no passado (roda já), e não 4 s depois do tick.
+ */
+it('janela de rajada ancorada na chegada do evento, não no tick', async () => {
+  const chegouHa = 10_000;
+  const chegada = Date.now() - chegouHa;
+  const params: unknown[][] = [];
+  const query = vi.fn().mockImplementation((sql: string, p?: unknown[]) => {
+    if (sql.includes('returning e.id')) return { rows: [{ ...event, created_at: new Date(chegada).toISOString() }] };
+    if (sql.includes('ai_dispatch_mode')) return { rows: [{ mode: null, status: 'active' }] };
+    if (sql.includes('is_group')) return { rows: [{ is_group: false }] };
+    if (sql.includes('tem_agente')) return { rows: [{ tem_agente: true, tem_roteador: false }] };
+    if (sql.includes('insert into job_queue')) {
+      params.push(p ?? []);
+      return { rows: [{ id: 'job-novo' }] };
+    }
+    return { rows: [] };
+  });
+  await drainTick({ query } as unknown as pg.Pool, { ...knobs, debounceMs: 4_000 }, log);
+
+  expect(params).toHaveLength(1);
+  const runAfter = new Date(params[0]![6] as string | Date).getTime();
+  expect(Math.abs(runAfter - (chegada + 4_000))).toBeLessThan(50);
+  expect(runAfter).toBeLessThan(Date.now());
+});

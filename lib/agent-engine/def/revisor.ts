@@ -165,10 +165,20 @@ export function checagensDeCodigo(args: {
   /** O que a equipe já mandou nesta conversa (repetição). */
   anterioresDaEquipe?: readonly string[];
   similaridadeMaxima?: number;
+  /** Teto de caracteres por mensagem (`revisor.max_caracteres`); ausente = sem teto. */
+  maxCaracteres?: number;
 }): VetoDef[] {
   const { body } = args;
   const vetos: VetoDef[] = [];
   const texto = semAcento(body);
+
+  // T. Tamanho: público que se perde em mensagem longa. Urgência nunca é barrada.
+  if (args.maxCaracteres !== undefined && args.modo !== 'urgencia' && body.trim().length > args.maxCaracteres) {
+    vetos.push({
+      regra: 'tamanho',
+      motivo: `Mensagem longa demais (${body.trim().length} caracteres; o limite é ${args.maxCaracteres}). Corte explicação e diga só o essencial.`,
+    });
+  }
 
   // 1. No máximo 2 parágrafos por mensagem (o limite de mensagens é `limiteDoTurno`).
   const paragrafos = body.split(/\n\s*\n/).filter((p) => p.trim() !== '');

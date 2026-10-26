@@ -209,13 +209,37 @@ for (const l of base.slice(inicioBase + 1)) {
 
 // ── o roteiro ───────────────────────────────────────────────────────────────
 
+interface EtapaSubstituida {
+  instrucoes: string;
+  /** Frases novas (id próprio, fora da numeração da Matriz). */
+  frases: FraseDef[];
+  /** Frases da Matriz que continuam valendo nesta etapa, pelo id. */
+  manter?: string[];
+}
+
+/**
+ * `substituir_etapas` troca o texto do documento 02 de uma etapa (o fluxo
+ * enxuto do Dr.); o resto do pacote segue igual. As frases da Matriz só entram
+ * quando listadas em `manter`, para os KPIs de "frase usada" não contarem uma
+ * frase que a etapa nova não usa.
+ */
 const bloco = (prefixoSecao: string, chave: string, frases: FraseDef[]) => {
   const s = secao(prefixoSecao);
+  const troca = (AJUSTES.substituir_etapas as Record<string, EtapaSubstituida> | undefined)?.[chave];
+  if (troca) {
+    const daMatriz = (troca.manter ?? []).map((id) => {
+      const f = [...descoberta, ...encantamento, ...fechamento, ...objecoes].find((x) => x.frase.id === id)?.frase;
+      if (!f) throw new Error(`substituir_etapas.${chave}: a Matriz não tem a frase ${id}`);
+      return f;
+    });
+    return { titulo: s.titulo, instrucoes: troca.instrucoes, frases: [...troca.frases, ...daMatriz] };
+  }
   return { titulo: s.titulo, instrucoes: `${s.texto}${acrescimo(chave)}`, frases };
 };
 
 const roteiro = roteiroDefSchema.parse({
   versao: 1,
+  ...(AJUSTES.fluxo ? { fluxo: AJUSTES.fluxo } : {}),
   modelo_extrator: AJUSTES.modelo_extrator,
   modelo_revisor: AJUSTES.modelo_revisor,
   equipe: AJUSTES.equipe,
@@ -248,6 +272,7 @@ const roteiro = roteiroDefSchema.parse({
     regex_tom: AJUSTES.revisor.regex_tom,
     perguntas_da_ficha: AJUSTES.revisor.perguntas_da_ficha,
     similaridade_maxima: AJUSTES.revisor.similaridade_maxima,
+    ...(AJUSTES.revisor.max_caracteres ? { max_caracteres: AJUSTES.revisor.max_caracteres } : {}),
   },
 });
 

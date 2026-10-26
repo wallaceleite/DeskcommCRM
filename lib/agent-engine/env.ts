@@ -132,7 +132,9 @@ const envSchema = z.object({
   // Drain do event_log (mesmo banco pós-fusão) — lote, ritmo e backoff ocioso.
   CRM_DRAIN_BATCH_SIZE: z.coerce.number().int().positive().default(20),
   CRM_DRAIN_INTERVAL_MS: z.coerce.number().int().positive().default(2_000),
-  CRM_DRAIN_IDLE_INTERVAL_MS: z.coerce.number().int().positive().default(15_000),
+  // [fork wallaceleite] 2 s (era 15 s): o ocioso é o tempo até a mensagem nova
+  // ser vista, e ele somava à espera da família antes do "digitando…".
+  CRM_DRAIN_IDLE_INTERVAL_MS: z.coerce.number().int().positive().default(2_000),
   // Evento 'processing' órfão (crash do worker) volta a 'pending' após isto.
   CRM_EVENT_REAP_TIMEOUT_MS: z.coerce.number().int().positive().default(300_000),
   // Drain dos HANDLERS do event_log (mídia, branding, follow-up…), à parte do

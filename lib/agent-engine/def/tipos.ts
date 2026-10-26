@@ -89,6 +89,12 @@ export const roteiroDefSchema = z.object({
   /** Modelo barato do extrator e do revisor (do MESMO provedor do agente). */
   modelo_extrator: z.string().min(1).optional(),
   modelo_revisor: z.string().min(1).optional(),
+  /**
+   * `def` (padrão): as sete etapas com Descoberta completa, Encantamento e
+   * Isolamento. `enxuto`: perguntas curtas e fechadas numa ordem fixa, e o
+   * valor sai junto com os horários, sem Encantamento nem Isolamento.
+   */
+  fluxo: z.enum(['def', 'enxuto']).optional(),
   equipe: z.object({
     dias: z.array(z.number().int().min(0).max(6)).min(1),
     inicio: z.string().regex(/^\d{2}:\d{2}$/),
@@ -150,9 +156,12 @@ export const roteiroDefSchema = z.object({
       .default([]),
     /** Acima desta semelhança com uma mensagem anterior da equipe, a mensagem é vetada. */
     similaridade_maxima: z.number().min(0.5).max(1).default(0.8),
+    /** Mensagem mais longa que isto é vetada por código (ausente = sem limite). */
+    max_caracteres: z.number().int().min(80).max(4000).optional(),
   }),
 });
 export type RoteiroDef = z.infer<typeof roteiroDefSchema>;
+export type FluxoDef = NonNullable<RoteiroDef['fluxo']>;
 
 // ── A FICHA ─────────────────────────────────────────────────────────────────
 //
@@ -175,6 +184,8 @@ export const fichaDefSchema = z
     uf: solto(z.string().max(30).nullable()),
     formato_preferido: solto(z.enum(['presencial', 'online', 'indiferente', 'nao_informado'])),
     tem_diagnostico: solto(z.enum(['sim', 'nao', 'investigando', 'nao_informado'])),
+    /** Já é paciente da clínica (retorno) ou é a primeira consulta. */
+    ja_e_paciente: solto(z.enum(['sim', 'nao', 'nao_informado'])),
     acompanhamento_atual: solto(z.array(z.string().max(40)).max(10)),
     motivo: solto(
       z.enum([

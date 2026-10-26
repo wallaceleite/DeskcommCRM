@@ -28,7 +28,7 @@
   "acrescimos": {
     "contato": "Se a família já escreveu \"Quero agendar uma consulta com o Dr. Raphael\", o interesse está confirmado: faça direto o recuo.\nSe a primeira mensagem da família já traz uma pergunta (online, diagnóstico, laudo, desconto, retorno…), responda a pergunta primeiro, com o sentido da frase de referência das Objeções, e só depois se apresente ou peça licença para as perguntas. Nunca ignore a pergunta da família.",
     "fechamento": "Os 2 horários do passo 5 vêm no bloco HORARIOS: ofereça só esses, do jeito que estão escritos. Sem o bloco, não fale de data.",
-    "reserva": "O horário escolhido aparece no bloco HORARIOS como segurado para a família. Cartão: use a passagem quer_cartao. Comprovante: use a passagem enviou_comprovante.",
+    "reserva": "O horário escolhido aparece no bloco HORARIOS como segurado para a família. Cartão: use a passagem quer_cartao. Comprovante: use a passagem enviou_comprovante.\nAo falar da taxa, diga os dois valores: R$ 300 agora (Pix ou cartão) e os R$ 900 restantes até 7 dias antes da consulta. Uma pergunta por mensagem: primeiro a forma de pagamento da taxa, depois a ficha da nota fiscal.",
     "decidido": "Se a família ainda não ouviu o valor, informe o valor numa frase (R$ 1.200, presencial ou online), sem comparação e sem a pergunta de condição. Ofereça os 2 horários do bloco HORARIOS.",
     "cadencia": "Retome de onde a conversa parou, numa mensagem curta. Não faça pergunta nova de Descoberta e não repita uma mensagem que a família já recebeu."
   },
@@ -61,12 +61,15 @@
     "perfil decidido: a frase do botão do anúncio (\"Quero agendar uma consulta com o Dr. Raphael\") sozinha NÃO é decidido, porque é o texto padrão de todo lead. Decidido precisa de um sinal a mais: indicação, já sabe o valor, pede data ou horário, ou tem prazo.",
     "intenção dermatologia: cita a Dra. Manoela, dermatologista, pele ou procedimento estético.",
     "intenção pergunta_clinica NÃO inclui dúvida sobre como a consulta funciona (se já sai com diagnóstico, se dá laudo, se sai com receita, se o online é igual ao presencial, se os testes são avaliação neuropsicológica): essas a equipe responde com a frase de referência das Objeções.",
-    "Pergunta sobre desconto (irmãos, à vista, Pix) NÃO é pergunta_preco: é objeção — objecao_atual \"São dois filhos\" ou \"Desconto à vista\"."
+    "Pergunta sobre desconto (irmãos, à vista, Pix) NÃO é pergunta_preco: é objeção — objecao_atual \"São dois filhos\" ou \"Desconto à vista\".",
+    "ja_e_paciente: \"sim\" quando a família diz que já se consultou com o Dr. Raphael ou que é retorno; nesse caso marque também a intenção paciente_antigo. \"nao\" quando diz que é a primeira consulta. Dizer que já é paciente NÃO é pergunta_fora_da_base.",
+    "acompanhamento_atual: quando a família diz que a criança não faz acompanhamento com ninguém, devolva [\"nenhum\"]."
   ],
   "revisor": {
     "base_extra": "Identidade: a Ana Paula é a assistente virtual da equipe do Dr. Raphael e acompanha o atendimento junto com a equipe.\nAssistência de 90 dias: citar o canal de assistência por até 90 dias, em horário comercial, para as situações relacionadas à conduta estabelecida (efeito da medicação prescrita, envio de exames pedidos), conforme o protocolo, é a redação do manual e não viola a regra 7. Viola quem promete falar com o doutor à vontade ou acompanhamento ilimitado.",
     "regras_extras": [
-      "Nega ser assistente virtual ou diz ser uma pessoa (por exemplo \"sou humana\", \"não sou robô\")."
+      "Nega ser assistente virtual ou diz ser uma pessoa (por exemplo \"sou humana\", \"não sou robô\").",
+      "Na etapa Descoberta, faz pergunta aberta (o que, como, por que, me conta) em vez de uma pergunta curta e fechada."
     ],
     "regex_extras": [
       "sou (uma )?(humana|pessoa de verdade|pessoa real)",
@@ -125,8 +128,76 @@
       {
         "campo": "decisor",
         "regex": "decide (junto|sozinh)|decisao e (so )?sua"
+      },
+      {
+        "campo": "ja_e_paciente",
+        "regex": "(e|sera) a primeira consulta[^.!?]*\\?"
+      },
+      {
+        "campo": "tem_diagnostico",
+        "regex": "tem (algum )?diagnostico[^.!?]*\\?"
       }
     ],
-    "similaridade_maxima": 0.8
+    "similaridade_maxima": 0.8,
+    "max_caracteres": 350
+  },
+  "fluxo": "enxuto",
+  "substituir_etapas": {
+    "contato": {
+      "instrucoes": "Objetivo: se apresentar e já começar as perguntas, na mesma mensagem.\n\nO que fazer\n1. Primeira mensagem: uma frase de apresentação (da equipe do Dr. Raphael, neuropediatra) e, na mesma mensagem, a pergunta do \"Próximo passo\". Não peça licença para perguntar.\n2. Se a primeira mensagem da família já traz uma pergunta (preço, online, diagnóstico, laudo…), responda a pergunta primeiro, em uma frase, e faça a pergunta do \"Próximo passo\".\n\nProibido: apresentar a consulta, falar de valor sem a família pedir, mandar horários.",
+      "frases": [
+        {
+          "id": "ENX-01",
+          "texto": "Oi, [nome]! Aqui é [seu nome], da equipe do Dr. Raphael Rangel, neuropediatra. Qual o nome e a idade do paciente?",
+          "quando": "1ª mensagem: apresentação e a primeira pergunta juntas"
+        }
+      ]
+    },
+    "descoberta": {
+      "instrucoes": "Objetivo: só as informações que a equipe precisa, com perguntas curtas e fechadas. Muitas famílias, os pais inclusive, têm TDAH: conversa longa e muitas perguntas fazem a família se perder.\n\nO que fazer\n- Faça só a pergunta do \"Próximo passo\": uma por mensagem, curta e fechada. Pode abrir com uma confirmação curta do que a família disse (\"Certo, 7 anos.\"), sem comentar o caso.\n- A ordem é: nome e idade do paciente; cidade e estado (ou país); se é a primeira consulta ou se já é paciente; se já tem diagnóstico ou está em investigação; acompanhamento com outros profissionais (só para quem já tem diagnóstico); modalidade, online ou presencial em Serra-ES.\n- Já é paciente: use a passagem paciente_antigo.\n- Está buscando diagnóstico: não pergunte sobre terapias, siga para a modalidade.\n- Fora do Espírito Santo ou do Brasil: a consulta online atende; pergunte a modalidade do mesmo jeito.\n\nProibido: pergunta aberta (o que, como, por que, me conta), falar da consulta, do valor ou de horários, pedir detalhe clínico, interpretar o caso.",
+      "frases": [
+        {
+          "id": "ENX-02",
+          "texto": "Qual o nome e a idade do paciente?",
+          "quando": "nome e idade do paciente"
+        },
+        {
+          "id": "ENX-03",
+          "texto": "Vocês são de qual cidade e estado?",
+          "quando": "cidade e estado (ou país)"
+        },
+        {
+          "id": "ENX-04",
+          "texto": "É a primeira consulta com o Dr. Raphael?",
+          "quando": "primeira consulta ou já é paciente"
+        }
+      ],
+      "manter": [
+        "DESC-07",
+        "DESC-08",
+        "DESC-16"
+      ]
+    },
+    "fechamento": {
+      "instrucoes": "Objetivo: mostrar o valor e oferecer os horários no mesmo turno, em duas mensagens curtas.\n\nO que fazer\n1. Primeira mensagem, sem pergunta: o que está incluso e o valor. Questionários digitais antes da consulta, no presencial e no online. Rastreio ocular só se a modalidade for presencial, e sempre \"quando indicado\"; no online, não cite. Depois: R$ 1.200, em até 3x sem juros no cartão ou no Pix.\n2. Segunda mensagem: os 2 horários do bloco HORARIOS (um de manhã e outro à tarde), do jeito que estão escritos, terminando em \"Qual fica melhor para vocês?\".\n3. Se a família reagir ao valor (caro, desconto, vou pensar, falar com o marido), trate no modo Objeção e volte aos horários.\n\nSem o bloco HORARIOS, não fale de data.\n\nProibido: comparar com convênio ou SUS sem a família trazer, pressão de prazo falsa, desconto fora da regra (só irmãos).",
+      "frases": [
+        {
+          "id": "ENX-05",
+          "texto": "A consulta com o Dr. Raphael é R$ 1.200. Antes dela, vocês respondem questionários digitais sobre o desenvolvimento e a rotina do [nome da criança], e no presencial, quando indicado, o rastreio ocular já está incluso. Dá para pagar em até 3x sem juros no cartão ou no Pix.",
+          "quando": "valor, modalidade presencial",
+          "marca": "preco"
+        },
+        {
+          "id": "ENX-06",
+          "texto": "A consulta online com o Dr. Raphael é R$ 1.200. Antes dela, vocês respondem questionários digitais sobre o desenvolvimento e a rotina do [nome da criança]. Dá para pagar em até 3x sem juros no cartão ou no Pix.",
+          "quando": "valor, modalidade online",
+          "marca": "preco"
+        }
+      ],
+      "manter": [
+        "FECH-07",
+        "FECH-14"
+      ]
+    }
   }
 }
