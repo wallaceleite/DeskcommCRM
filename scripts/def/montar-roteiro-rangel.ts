@@ -132,6 +132,28 @@ const objecoes = frasesDaAba("Objeções", "Frase", "OBJ", 0, (l) => l.colunas[1
 const perfis = frasesDaAba("Perfis", "Perfil", "PERF", 3, (l) => l.colunas[0] ?? "");
 const cadencia = frasesDaAba("Cadência", "Passo", "CAD", 2, (l) => [l.colunas[0], l.colunas[1]].filter(Boolean).join(" · "));
 
+/**
+ * `substituir_frases` troca o texto de uma frase da Matriz pelo id (a voz da
+ * equipe); o id, o "quando" e a marca ficam, para os KPIs seguirem contando a
+ * mesma frase.
+ */
+const todasAsFrases = [...descoberta, ...encantamento, ...fechamento, ...objecoes, ...perfis, ...cadencia];
+// O valor é o texto inteiro, ou pares [de, para] quando a frase traz dado do
+// consultório (razão social, chave) que não deve ser copiado para este repositório.
+for (const [id, troca] of Object.entries((AJUSTES.substituir_frases ?? {}) as Record<string, string | [string, string][]>)) {
+  if (id.startsWith("_")) continue;
+  const alvo = todasAsFrases.find((x) => x.frase.id === id);
+  if (!alvo) throw new Error(`substituir_frases: a Matriz não tem a frase ${id}`);
+  if (typeof troca === "string") {
+    alvo.frase.texto = troca;
+    continue;
+  }
+  for (const [de, para] of troca) {
+    if (!alvo.frase.texto.includes(de)) throw new Error(`substituir_frases.${id}: a frase não tem "${de}"`);
+    alvo.frase.texto = alvo.frase.texto.replace(de, para);
+  }
+}
+
 const validas = (xs: { frase: FraseDef }[]) => xs.map((x) => x.frase).filter((f) => f.texto !== "" && !pendente(f.texto));
 const naSecao = (xs: typeof descoberta, teste: (s: string) => boolean) => xs.filter((x) => teste(x.secao));
 
@@ -171,6 +193,14 @@ if (adulto) passagens.push({ intencao: "adulto", acao: "dispensar", mensagem: ad
 if (golpe) passagens.push({ intencao: "golpe", acao: "responder", mensagem: golpe.frase.texto });
 if (precoAntes[0]) passagens.push({ intencao: "pergunta_preco", acao: "responder", mensagem: precoAntes[0].frase.texto });
 passagens.push(...AJUSTES.passagens_extras);
+
+/** `substituir_passagens` troca a mensagem (e o aviso de fora do horário) de uma passagem da planilha 04, pela intenção. */
+for (const [intencao, troca] of Object.entries((AJUSTES.substituir_passagens ?? {}) as Record<string, Record<string, string>>)) {
+  if (intencao.startsWith("_")) continue;
+  const alvo = passagens.find((p) => p.intencao === intencao);
+  if (!alvo) throw new Error(`substituir_passagens: a planilha 04 não tem a passagem ${intencao}`);
+  Object.assign(alvo, troca);
+}
 
 // ── documento 03: o extrator ────────────────────────────────────────────────
 
@@ -234,7 +264,13 @@ const bloco = (prefixoSecao: string, chave: string, frases: FraseDef[]) => {
     });
     return { titulo: s.titulo, instrucoes: troca.instrucoes, frases: [...troca.frases, ...daMatriz] };
   }
-  return { titulo: s.titulo, instrucoes: `${s.texto}${acrescimo(chave)}`, frases };
+  // `trocar_nas_instrucoes`: corrige uma frase do documento 02 sem reescrever a etapa inteira.
+  let texto = s.texto;
+  for (const [de, para] of ((AJUSTES.trocar_nas_instrucoes ?? {}) as Record<string, [string, string][]>)[chave] ?? []) {
+    if (!texto.includes(de)) throw new Error(`trocar_nas_instrucoes.${chave}: o documento 02 não tem "${de}"`);
+    texto = texto.replace(de, para);
+  }
+  return { titulo: s.titulo, instrucoes: `${texto}${acrescimo(chave)}`, frases };
 };
 
 const roteiro = roteiroDefSchema.parse({

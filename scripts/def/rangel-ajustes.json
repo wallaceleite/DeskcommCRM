@@ -37,7 +37,7 @@
       "intencao": "pergunta_se_e_ia",
       "acao": "responder",
       "exclusiva": true,
-      "mensagem": "Sou a assistente virtual da equipe do Dr. Raphael e acompanho o seu atendimento junto com a equipe. Se preferir falar com uma pessoa, eu chamo agora. Quer que eu chame?"
+      "mensagem": "Sou a assistente virtual da equipe do Dr. Raphael e acompanho o seu atendimento junto com eles. Prefere falar com uma pessoa?"
     },
     {
       "intencao": "pediu_depois",
@@ -47,8 +47,8 @@
     {
       "intencao": "sem_horario",
       "acao": "passar",
-      "mensagem": "Vou ver com a equipe os próximos horários do Dr. Raphael e já te passo, combinado?",
-      "fora_do_horario": "A equipe envia os horários a partir das 8h do próximo dia útil."
+      "mensagem": "Vou ver os próximos horários do Dr. Raphael e já te passo.",
+      "fora_do_horario": "Os horários chegam por aqui a partir das 8h do próximo dia útil."
     }
   ],
   "extrator_extras": [
@@ -62,7 +62,8 @@
     "intenção dermatologia: cita a Dra. Manoela, dermatologista, pele ou procedimento estético.",
     "intenção pergunta_clinica NÃO inclui dúvida sobre como a consulta funciona (se já sai com diagnóstico, se dá laudo, se sai com receita, se o online é igual ao presencial, se os testes são avaliação neuropsicológica): essas a equipe responde com a frase de referência das Objeções.",
     "Pergunta sobre desconto (irmãos, à vista, Pix) NÃO é pergunta_preco: é objeção — objecao_atual \"São dois filhos\" ou \"Desconto à vista\".",
-    "ja_e_paciente: \"sim\" quando a família diz que já se consultou com o Dr. Raphael ou que é retorno; nesse caso marque também a intenção paciente_antigo. \"nao\" quando diz que é a primeira consulta. Dizer que já é paciente NÃO é pergunta_fora_da_base.",
+    "ja_e_paciente: \"sim\" quando a família diz que já se consultou com o Dr. Raphael ou que é retorno; nesse caso marque também a intenção paciente_antigo. \"nao\" quando diz que é a primeira consulta, que nunca passou com ele, ou responde \"sim\" a \"É a primeira consulta?\". Leia o sim ou o não pela pergunta que a equipe fez: \"sim, primeira vez\" é \"nao\" e NÃO é paciente_antigo. Dizer que já é paciente NÃO é pergunta_fora_da_base.",
+    "intenção paciente_antigo: SÓ quando a família diz que o paciente JÁ se consultou com o Dr. Raphael (retorno, já é paciente dele). Responder que é a primeira consulta (\"sim, primeira vez\", \"não, primeira vez\", \"primeira\", \"nunca passamos com ele\") NUNCA é paciente_antigo.",
     "acompanhamento_atual: quando a família diz que a criança não faz acompanhamento com ninguém, devolva [\"nenhum\"]."
   ],
   "revisor": {
@@ -106,6 +107,22 @@
       {
         "regex": "(?!😬)\\p{Extended_Pictographic}",
         "motivo": "Sem emoji (só o 😬 da cadência)."
+      },
+      {
+        "regex": "combinado\\?",
+        "motivo": "Não use \"combinado?\": termine na pergunta do passo, ou sem pergunta."
+      },
+      {
+        "regex": "^\\s*(perfeito|compreendo|te entendo|imagino que)",
+        "motivo": "Não abra com \"Perfeito\", \"Compreendo\", \"Te entendo\" ou \"Imagino que\": vá direto ao ponto."
+      },
+      {
+        "regex": "\\banotad[oa]s?\\b|pedido registrado|s[óo] para registro",
+        "motivo": "Não anuncie que anotou ou registrou: diga só o que importa para a família."
+      },
+      {
+        "regex": "para seguirmos",
+        "motivo": "Sem \"para seguirmos\": diga direto o que precisa."
       }
     ],
     "perguntas_da_ficha": [
@@ -131,7 +148,7 @@
       },
       {
         "campo": "ja_e_paciente",
-        "regex": "(e|sera) a primeira consulta[^.!?]*\\?"
+        "regex": "(e|sera) a primeira consulta[^.!?]*\\?|ja (se )?consult[^.!?]*\\?|ja passaram[^.!?]*\\?"
       },
       {
         "campo": "tem_diagnostico",
@@ -148,13 +165,13 @@
       "frases": [
         {
           "id": "ENX-01",
-          "texto": "Oi, [nome]! Aqui é [seu nome], da equipe do Dr. Raphael Rangel, neuropediatra. Qual o nome e a idade do paciente?",
+          "texto": "Oi, [nome]! Aqui é a [seu nome], da equipe do Dr. Raphael Rangel, neuropediatra. Qual o nome e a idade do paciente?",
           "quando": "1ª mensagem: apresentação e a primeira pergunta juntas"
         }
       ]
     },
     "descoberta": {
-      "instrucoes": "Objetivo: só as informações que a equipe precisa, com perguntas curtas e fechadas. Muitas famílias, os pais inclusive, têm TDAH: conversa longa e muitas perguntas fazem a família se perder.\n\nO que fazer\n- Faça só a pergunta do \"Próximo passo\": uma por mensagem, curta e fechada. Pode abrir com uma confirmação curta do que a família disse (\"Certo, 7 anos.\"), sem comentar o caso.\n- A ordem é: nome e idade do paciente; cidade e estado (ou país); se é a primeira consulta ou se já é paciente; se já tem diagnóstico ou está em investigação; acompanhamento com outros profissionais (só para quem já tem diagnóstico); modalidade, online ou presencial em Serra-ES.\n- Já é paciente: use a passagem paciente_antigo.\n- Está buscando diagnóstico: não pergunte sobre terapias, siga para a modalidade.\n- Fora do Espírito Santo ou do Brasil: a consulta online atende; pergunte a modalidade do mesmo jeito.\n\nProibido: pergunta aberta (o que, como, por que, me conta), falar da consulta, do valor ou de horários, pedir detalhe clínico, interpretar o caso.",
+      "instrucoes": "Objetivo: só as informações que a equipe precisa, com perguntas curtas e fechadas. Muitas famílias, os pais inclusive, têm TDAH: conversa longa e muitas perguntas fazem a família se perder.\n\nO que fazer\n- Faça só a pergunta do \"Próximo passo\": uma por mensagem, curta e fechada. Pode abrir com uma confirmação de uma palavra (\"Joia\", \"Certo\") ou ir direto à pergunta, sem repetir o que a família disse e sem comentar o caso.\n- A ordem é: nome e idade do paciente; cidade e estado (ou país); se é a primeira consulta ou se já é paciente; se já tem diagnóstico ou está em investigação; acompanhamento com outros profissionais (só para quem já tem diagnóstico); modalidade, online ou presencial em Serra-ES.\n- Já é paciente: use a passagem paciente_antigo.\n- Está buscando diagnóstico: não pergunte sobre terapias, siga para a modalidade.\n- Fora do Espírito Santo ou do Brasil: a consulta online atende; pergunte a modalidade do mesmo jeito.\n\nProibido: pergunta aberta (o que, como, por que, me conta), falar da consulta, do valor ou de horários, pedir detalhe clínico, interpretar o caso.",
       "frases": [
         {
           "id": "ENX-02",
@@ -168,7 +185,7 @@
         },
         {
           "id": "ENX-04",
-          "texto": "É a primeira consulta com o Dr. Raphael?",
+          "texto": "Vocês já se consultaram com o Dr. Raphael antes?",
           "quando": "primeira consulta ou já é paciente"
         }
       ],
@@ -183,13 +200,13 @@
       "frases": [
         {
           "id": "ENX-05",
-          "texto": "A consulta com o Dr. Raphael é R$ 1.200. Antes dela, vocês respondem questionários digitais sobre o desenvolvimento e a rotina do [nome da criança], e no presencial, quando indicado, o rastreio ocular já está incluso. Dá para pagar em até 3x sem juros no cartão ou no Pix.",
+          "texto": "A consulta é R$ 1.200, no Pix ou em até 3x sem juros no cartão. Antes dela vocês respondem uns questionários digitais sobre o [nome da criança], e no presencial, quando indicado, já inclui o rastreio ocular.",
           "quando": "valor, modalidade presencial",
           "marca": "preco"
         },
         {
           "id": "ENX-06",
-          "texto": "A consulta online com o Dr. Raphael é R$ 1.200. Antes dela, vocês respondem questionários digitais sobre o desenvolvimento e a rotina do [nome da criança]. Dá para pagar em até 3x sem juros no cartão ou no Pix.",
+          "texto": "A consulta online é R$ 1.200, no Pix ou em até 3x sem juros no cartão. Antes dela vocês respondem uns questionários digitais sobre o [nome da criança].",
           "quando": "valor, modalidade online",
           "marca": "preco"
         }
@@ -199,5 +216,87 @@
         "FECH-14"
       ]
     }
+  },
+  "substituir_passagens": {
+    "_leia": "Texto novo de passagens que vêm da planilha 04 (Drive, só leitura). Chave = intenção.",
+    "pergunta_clinica": {
+      "mensagem": "Essa pergunta o Dr. Raphael precisa avaliar na consulta, e por aqui eu não consigo te responder com segurança. Quer que eu veja os horários dele?"
+    },
+    "quer_cartao": {
+      "mensagem": "Joia! O link do cartão chega por aqui daqui a pouco.",
+      "fora_do_horario": "O link do cartão chega por aqui a partir das 8h do próximo dia útil, e o horário fica separado até lá."
+    },
+    "enviou_comprovante": {
+      "mensagem": "Recebi, [nome]! Assim que o Pix cair, te confirmo o agendamento por aqui.",
+      "fora_do_horario": "A confirmação sai a partir das 8h do próximo dia útil."
+    },
+    "quer_data_antes": {
+      "mensagem": "Vou colocar o [nome da criança] na lista de desistência: se abrir vaga antes, vocês são os primeiros chamados. Enquanto isso, deixamos o dia [data] garantido para não ficar sem horário."
+    },
+    "paciente_antigo": {
+      "mensagem": "Que bom ter vocês de volta! Vou ver as condições para quem já é paciente e te respondo."
+    },
+    "dermatologia": {
+      "mensagem": "Isso é com a equipe da Dra. Manoela. Vou passar a sua mensagem para eles."
+    },
+    "curso_iess": {
+      "mensagem": "Esse assunto é com a equipe de cursos. Vou passar a sua mensagem para eles."
+    },
+    "quer_humano": {
+      "mensagem": "Já chamo alguém da equipe para falar com você."
+    },
+    "irritado": {
+      "mensagem": "Desculpa, [nome]. Já chamo alguém da equipe para resolver isso com você."
+    },
+    "pergunta_fora_da_base": {
+      "mensagem": "Vou confirmar essa informação e já te respondo."
+    },
+    "formato_laudo": {
+      "mensagem": "Vou confirmar com o Dr. Raphael sobre esse formato de laudo e te respondo."
+    }
+  },
+  "substituir_frases": {
+    "_leia": "Texto novo de frases da Matriz (Drive, só leitura), pelo id. O id fica, para os KPIs de frase usada.",
+    "CAD-03": "Oi, [nome]! Ainda quer ver os horários do Dr. Raphael?",
+    "CAD-04": "Oi, [nome]! Conseguiu ver minha mensagem?",
+    "CAD-05": "[nome], vocês ainda estão buscando a consulta para o [nome da criança]?",
+    "CAD-06": "[nome], tentei falar com você sobre a consulta com o Dr. Raphael e não consegui. A avaliação ainda é prioridade para vocês, ou posso encerrar o atendimento por aqui?",
+    "CAD-07": "Tudo bem, [nome]. Se puder me dizer, o que pesou mais: o valor, a distância, o convênio ou a data?",
+    "CAD-08": "Oi, [nome]! Combinamos de voltar a falar hoje sobre a consulta do [nome da criança]. Ainda querem marcar?",
+    "OBJ-01": "A consulta é R$ 1.200, presencial ou online, e já inclui os questionários digitais antes e o canal de assistência por até 90 dias. Qual o nome e a idade do paciente?",
+    "OBJ-02": "Quanto vocês tinham pensado em investir nessa avaliação?",
+    "OBJ-04": "Dá para dividir em até 3x sem juros no cartão, e para reservar é só a taxa de R$ 300 agora. Assim fica possível para vocês?",
+    "OBJ-07": "O Dr. Raphael atende só particular, e emite nota fiscal em todos os atendimentos, que você pode usar para consultar o reembolso no seu plano. O que pesa mais para vocês agora: o valor ou o tempo de espera?",
+    "OBJ-08": "No online o atendimento é com o próprio Dr. Raphael, com a mesma proposta de avaliação e os mesmos questionários antes, e os documentos chegam digitais e pelos Correios. O que te deixa em dúvida no online?",
+    "OBJ-10": "É uma decisão dos dois mesmo. Para eu te ajudar a levar as informações certinhas, o que você acha que ele vai querer saber?",
+    "OBJ-12": [
+      [
+        "Faz todo sentido perguntar. Você pode confirmar pelo Instagram oficial do Dr. Raphael, @dr.raphaelrangel,",
+        "Pode conferir, sim. O Instagram oficial do Dr. Raphael é o @dr.raphaelrangel,"
+      ],
+      [
+        "Quer conferir e me avisa?",
+        "Quer dar uma olhada e me avisar?"
+      ]
+    ],
+    "OBJ-13": "Sem problema. Deixo o horário separado e te lembro da taxa no dia [data]. Só que, sem a taxa até lá, não consigo manter na agenda. Pode ser assim?",
+    "OBJ-14": "Posso colocar o [nome da criança] na lista de desistência: se abrir vaga antes, vocês são os primeiros que eu chamo. Enquanto isso, garantimos o dia [data] para não ficar sem horário. Pode ser?",
+    "OBJ-15": "Tudo bem. É o valor, a data ou alguma dúvida sobre a consulta?",
+    "OBJ-16": "Sem problema. O que ficou de dúvida, para a gente ver junto agora?",
+    "OBJ-25": "Para prescrever com segurança, o Dr. precisa avaliar o histórico e a situação atual do paciente, então a receita depende de uma consulta. Quer que eu veja os horários?",
+    "OBJ-27": "Deve ter sido cansativo para vocês. O Dr. considera o histórico e as avaliações anteriores, então vale separar os documentos. O que ficou sem resposta até agora?",
+    "FECH-14": "O que pesou mais para você, [nome]?",
+    "FECH-15": "Parabéns pela decisão, [nome]! O horário do [nome da criança] está garantido: [dia] às [hora]. Vou te mandar o acesso aos questionários, que precisam estar respondidos até 72h antes. Ficou alguma dúvida sobre a consulta?",
+    "PERF-02": "Tudo bem, [nome]. O Dr. Raphael atende só particular, com nota fiscal. Se em algum momento fizer sentido, é só me chamar aqui.",
+    "PERF-03": "Que bom, [nome]! Para eu já ver os horários, qual o nome e a idade do paciente?",
+    "PERF-05": "Se quiser entender como a avaliação funcionaria para o [nome da criança], é só me chamar aqui."
+  },
+  "trocar_nas_instrucoes": {
+    "objecao": [
+      [
+        "começar com \"Compreendo\" ou \"Te entendo\", não rebater",
+        "ir direto ao ponto, sem frase pronta de empatia (\"Compreendo\", \"Te entendo\"), não rebater"
+      ]
+    ]
   }
 }
