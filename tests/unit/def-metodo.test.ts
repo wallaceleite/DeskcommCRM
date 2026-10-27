@@ -18,7 +18,7 @@ import {
   vereditoSemModelo,
 } from "@/lib/agent-engine/def/revisor";
 import { lerSaidaDoExtrator, mesclarFicha } from "@/lib/agent-engine/def/extrator";
-import { houveRetomada, iniciarTurnoDef, prepararMensagemDePassagem, resumoCurtoDaFicha } from "@/lib/agent-engine/def/turno";
+import { fichaParaEsteAtendimento, houveRetomada, iniciarTurnoDef, prepararMensagemDePassagem, resumoCurtoDaFicha } from "@/lib/agent-engine/def/turno";
 import { renderizarBlocosDef } from "@/lib/agent-engine/def/blocos";
 import { agoraNoFuso, encontrarVagaEscolhida, escolherVagas, type HorarioDef } from "@/lib/agent-engine/def/agenda";
 import { camposConfirmadosPelaFrase, lerRotulos } from "@/lib/agent-engine/def/rotulador";
@@ -247,12 +247,42 @@ describe("fluxo enxuto (pedido do Dr.): perguntas curtas numa ordem fixa", () =>
     expect(faltamNaEtapa("descoberta", { idade_anos: 7, cidade: "Vitória", formato_preferido: "online" })).toContain("quem decide");
   });
 
+  it("no fechamento sem modalidade, pergunta a modalidade antes do valor e dos horários", () => {
+    const d = enxuto({}, { etapaAnterior: "fechamento" });
+    expect(d.etapa).toBe("fechamento");
+    expect(d.faltam).toEqual(["modalidade: online ou presencial"]);
+  });
+
+  it("atalho do decidido no enxuto: sem modalidade não vai aos horários", () => {
+    const d = enxuto({ perfil: "decidido", idade_anos: 7, cidade: "Vitória" });
+    expect(d.modo).toBe("decidido");
+    expect(d.etapa).not.toBe("fechamento");
+    expect(d.faltam).toContain("modalidade: online ou presencial");
+    expect(enxuto({ perfil: "decidido", idade_anos: 7, cidade: "Vitória", formato_preferido: "presencial" }).etapa).toBe("fechamento");
+  });
+
   it("o bloco mostra só o próximo passo", () => {
     const decisao = enxuto({ idade_anos: 7 });
     const bloco = renderizarBlocosDef({ roteiro: ENXUTO, decisao, ficha: { idade_anos: 7 }, dentroDoHorario: true, objecaoAtual: null });
     expect(bloco).toContain("### Próximo passo (só este");
     expect(bloco).toContain("- cidade e estado (ou país)");
     expect(bloco).not.toContain("se é a primeira consulta");
+  });
+});
+
+describe("ficha de um atendimento anterior", () => {
+  const ficha: FichaDef = { idade_anos: 6, cidade: "Campinas", formato_preferido: "online", horario_escolhido: "2026-11-17 09:00", reacao_preco: "sim" };
+  const msgs = [{ sent_at: "2026-10-27T09:40:34-03:00" }, { sent_at: "2026-10-27T09:40:41-03:00" }];
+
+  it("gravada antes deste atendimento: formato, horário e reação ao preço voltam a ser perguntados", () => {
+    const f = fichaParaEsteAtendimento(ficha, new Date("2026-10-24T21:21:31Z"), msgs);
+    expect(f).toMatchObject({ idade_anos: 6, cidade: "Campinas", formato_preferido: "nao_informado", horario_escolhido: null, reacao_preco: null });
+  });
+
+  it("gravada neste atendimento: fica como está", () => {
+    expect(fichaParaEsteAtendimento(ficha, new Date("2026-10-27T12:41:00Z"), msgs)).toBe(ficha);
+    expect(fichaParaEsteAtendimento(ficha, null, msgs)).toBe(ficha);
+    expect(fichaParaEsteAtendimento(ficha, new Date("2026-10-24T21:21:31Z"), [])).toBe(ficha);
   });
 });
 

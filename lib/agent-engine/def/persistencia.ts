@@ -45,9 +45,9 @@ export async function carregarFichaDef(
   db: pg.Pool,
   organizationId: string,
   contactId: string,
-): Promise<{ etapa: EtapaDef; ficha: FichaDef } | null> {
-  const r = await db.query<{ etapa: string; ficha: unknown }>(
-    'select etapa, ficha from def_fichas where organization_id = $1 and contact_id = $2',
+): Promise<{ etapa: EtapaDef; ficha: FichaDef; atualizadaEm: Date | null } | null> {
+  const r = await db.query<{ etapa: string; ficha: unknown; atualizada_em: Date | null }>(
+    'select etapa, ficha, atualizada_em from def_fichas where organization_id = $1 and contact_id = $2',
     [organizationId, contactId],
   );
   const linha = r.rows[0];
@@ -56,6 +56,7 @@ export async function carregarFichaDef(
   return {
     etapa: eEtapaDef(linha.etapa) ? linha.etapa : 'contato',
     ficha: ficha.success ? ficha.data : {},
+    atualizadaEm: linha.atualizada_em ?? null,
   };
 }
 

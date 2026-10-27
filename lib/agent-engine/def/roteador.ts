@@ -86,7 +86,9 @@ function faltamNoFluxoEnxuto(etapa: EtapaDef, f: FichaDef, equipeJaFalou: boolea
     case 'isolamento':
       return [];
     case 'fechamento':
-      return preenchido(f.horario_escolhido) ? [] : ['apresentar o que está incluso e o valor, e oferecer os horários'];
+      if (preenchido(f.horario_escolhido)) return [];
+      // Sem a modalidade deste atendimento, nada de valor nem horário: perguntar antes.
+      return semFormato(f) ? ['modalidade: online ou presencial'] : ['apresentar o que está incluso e o valor, e oferecer os horários'];
     default:
       return undefined;
   }
@@ -161,11 +163,19 @@ export function faltamNaEtapa(
   }
 }
 
+function semFormato(f: FichaDef): boolean {
+  return f.formato_preferido === undefined || f.formato_preferido === 'nao_informado';
+}
+
 /** O que o atalho do decidido ainda precisa confirmar antes dos horários. */
-export function faltamNoAtalhoDecidido(f: FichaDef): string[] {
+export function faltamNoAtalhoDecidido(f: FichaDef, fluxo?: FluxoDef): string[] {
   const falta: string[] = [];
   if (f.idade_anos === undefined || f.idade_anos === null) falta.push('idade');
-  if (!preenchido(f.cidade) && (f.formato_preferido === undefined || f.formato_preferido === 'nao_informado')) {
+  if (fluxo === 'enxuto') {
+    // No enxuto a vaga depende da modalidade: a cidade sozinha não basta.
+    if (!preenchido(f.cidade)) falta.push('cidade');
+    if (semFormato(f)) falta.push('modalidade: online ou presencial');
+  } else if (!preenchido(f.cidade) && semFormato(f)) {
     falta.push('cidade (ou o formato)');
   }
   return falta;
@@ -198,7 +208,7 @@ export function decidirEtapaDef(args: {
     // Atalho do lead decidido (aba Perfis): confirma idade e cidade (ou formato)
     // e vai direto aos horários — sem recuo nem Descoberta completa.
     modo = 'decidido';
-    if (faltamNoAtalhoDecidido(f).length === 0) etapa = 'fechamento';
+    if (faltamNoAtalhoDecidido(f, roteiro.fluxo).length === 0) etapa = 'fechamento';
   }
 
   // Avança enquanto o critério de saída estiver cumprido. Nunca volta.
@@ -236,7 +246,7 @@ export function decidirEtapaDef(args: {
   }
 
   const faltam =
-    modo === 'decidido' && indice(etapa) < indice('fechamento') ? faltamNoAtalhoDecidido(f) : faltamNaEtapa(etapa, f, ctx);
+    modo === 'decidido' && indice(etapa) < indice('fechamento') ? faltamNoAtalhoDecidido(f, roteiro.fluxo) : faltamNaEtapa(etapa, f, ctx);
   return { etapa, etapaAnterior, modo, passagem, respostas, faltam };
 }
 

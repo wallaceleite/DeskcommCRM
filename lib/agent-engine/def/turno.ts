@@ -145,9 +145,35 @@ export function resumoCurtoDaFicha(etapa: EtapaDef, ficha: FichaDef): string {
   return `Método DEF, etapa ${etapa}${partes.length > 0 ? `: ${partes.join('; ')}` : ''}`.slice(0, 200);
 }
 
+/**
+ * A ficha é do CONTATO; o histórico que o agente lê é do ATENDIMENTO. Quando a
+ * família volta num atendimento novo, o que ela decidiu no anterior (formato,
+ * horário, reação ao preço) não está mais na conversa que o agente vê, e
+ * repetir isso como fato faz o agente afirmar "consulta online" para quem nunca
+ * disse online neste atendimento. Esses três campos voltam a ser perguntados;
+ * o resto da ficha (quem é, idade, cidade, diagnóstico) continua valendo.
+ *
+ * "Atendimento novo" = a ficha foi gravada antes da mensagem mais antiga do
+ * histórico deste atendimento.
+ */
+export function fichaParaEsteAtendimento(
+  ficha: FichaDef,
+  atualizadaEm: Date | null,
+  mensagens: readonly { sent_at: string }[],
+): FichaDef {
+  if (atualizadaEm === null || mensagens.length === 0) return ficha;
+  const inicio = Math.min(...mensagens.map((m) => Date.parse(m.sent_at)).filter(Number.isFinite));
+  if (!Number.isFinite(inicio) || atualizadaEm.getTime() >= inicio) return ficha;
+  return { ...ficha, formato_preferido: 'nao_informado', horario_escolhido: null, reacao_preco: null };
+}
+
 /** Etapas em que a família pode precisar de horário agora. */
 function precisaDeHorario(decisao: DecisaoDef, ficha: FichaDef, fluxo: RoteiroDef['fluxo']): boolean {
   if (decisao.etapa === 'reserva') return true;
+  // Vaga depende da modalidade: sem ela, primeiro a pergunta.
+  if (fluxo === 'enxuto' && (ficha.formato_preferido === undefined || ficha.formato_preferido === 'nao_informado')) {
+    return false;
+  }
   // No fluxo enxuto o valor e os horários saem no mesmo turno.
   if (decisao.modo === 'decidido' || fluxo === 'enxuto') return decisao.etapa === 'fechamento';
   return decisao.etapa === 'fechamento' && (ficha.reacao_preco === 'sim' || ficha.reacao_preco === 'sim_sem_firmeza');
@@ -180,7 +206,7 @@ export async function iniciarTurnoDef(args: {
     if (roteiro === null) return null;
 
     const salvo = args.persistir && args.leadId !== '' ? await carregarFichaDef(args.pool, args.tenantId, args.leadId) : null;
-    let ficha: FichaDef = salvo?.ficha ?? {};
+    let ficha: FichaDef = salvo ? fichaParaEsteAtendimento(salvo.ficha, salvo.atualizadaEm, args.contexto.messages) : {};
     const etapaAnterior: EtapaDef = salvo?.etapa ?? 'contato';
     let intencoes: IntencaoDef[] = [];
     let objecaoAtual: string | null = null;
