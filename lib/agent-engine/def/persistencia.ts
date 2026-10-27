@@ -90,7 +90,7 @@ export async function salvarFichaDef(
   );
 }
 
-export type TipoDeEventoDef = 'extracao' | 'etapa' | 'mensagem' | 'revisor' | 'passagem' | 'turno' | 'reserva';
+export type TipoDeEventoDef = 'extracao' | 'etapa' | 'mensagem' | 'revisor' | 'passagem' | 'turno' | 'reserva' | 'recomeco';
 
 export async function registrarEventoDef(
   db: pg.Pool,

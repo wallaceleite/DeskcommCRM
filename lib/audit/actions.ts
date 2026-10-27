@@ -244,6 +244,8 @@ export const AUDIT_ACTIONS = [
   "ai.guardrail_layer_changed",
   // [fork wallaceleite] Método DEF: o roteiro de vendas de um agente foi gravado.
   "def.roteiro_atualizado",
+  // [fork wallaceleite] A ficha DEF de um contato voltou ao começo (a antiga fica num evento).
+  "def.ficha_recomecada",
   "ai_agent.run_started",
   "ai_agent.run_completed",
   "ai_agent.run_failed",
