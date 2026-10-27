@@ -43,6 +43,7 @@ const ROTEIRO: RoteiroDef = roteiroDefSchema.parse({
     { intencao: "urgencia", acao: "urgencia", mensagem: "procure imediatamente um serviço de urgência" },
     { intencao: "adulto", acao: "dispensar", mensagem: "atende até 17 anos e 11 meses" },
     { intencao: "dermatologia", acao: "passar", mensagem: "equipe da Dra. Manoela" },
+    { intencao: "paciente_antigo", acao: "passar", mensagem: "condições para quem já é paciente" },
     { intencao: "pergunta_clinica", acao: "responder", mensagem: "o Dr. Raphael precisa avaliar" },
     {
       intencao: "pergunta_se_e_ia",
@@ -192,6 +193,15 @@ describe("roteador DEF: o modo do turno pela intenção", () => {
 
   it("objeção sem passagem entra no modo objeção", () => {
     expect(decidir({}, { objecaoAtual: "valor" }).modo).toBe("objecao");
+  });
+
+  it("paciente_antigo só passa quando a ficha diz que já é paciente", () => {
+    // A Thais: "faço acompanhamento com um neuro, mas quero trocar" — intenção marcada, ficha "nao".
+    expect(decidir({ ja_e_paciente: "nao" }, { intencoes: ["paciente_antigo"] }).modo).toBe("normal");
+    expect(decidir({}, { intencoes: ["paciente_antigo"] }).modo).toBe("normal");
+    const d = decidir({ ja_e_paciente: "sim" }, { intencoes: ["paciente_antigo"] });
+    expect(d.modo).toBe("passagem");
+    expect(d.passagem?.intencao).toBe("paciente_antigo");
   });
 });
 

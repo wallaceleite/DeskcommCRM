@@ -192,7 +192,11 @@ export function decidirEtapaDef(args: {
   /** A equipe já mandou alguma mensagem neste atendimento (fluxo enxuto). */
   equipeJaFalou?: boolean;
 }): DecisaoDef {
-  const { roteiro, ficha: f, etapaAnterior, intencoes } = args;
+  const { roteiro, ficha: f, etapaAnterior } = args;
+  // paciente_antigo tira a conversa da IA: só vale quando a própria ficha diz que já é
+  // paciente. O extrator chegou a marcar a intenção com ja_e_paciente "nao" na mesma
+  // saída ("faço acompanhamento com um neuro, mas quero trocar").
+  const intencoes = args.intencoes.filter((i) => i !== 'paciente_antigo' || f.ja_e_paciente === 'sim');
   const ctx = { fluxo: roteiro.fluxo, equipeJaFalou: args.equipeJaFalou ?? true };
   const passagemDa = (intencao: IntencaoDef) => roteiro.passagens.find((p) => p.intencao === intencao) ?? null;
 
