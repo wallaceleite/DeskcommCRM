@@ -69,16 +69,43 @@ async function executarRodizio(ctx: ActionCtx, leadId: string): Promise<ActionRe
   }
 }
 
+/**
+ * Fork: "quem puxou fica com o card". Com `preferir_quem_moveu`, a pessoa que
+ * moveu o card à mão (o `actor_user_id` que as rotas de mover gravam no
+ * `metadata` do evento) fica com ele — desde que esteja na fila e não pausada.
+ * Movimento sem pessoa (captação da Hotmart, varredura de tempo) ou de quem está
+ * fora da fila (o admin liberando um lote) segue a vez do rodízio.
+ */
+function quemMoveuNaFila(ctx: ActionCtx, config: Record<string, unknown>): string | null {
+  if (config.preferir_quem_moveu !== true) return null;
+  const autor = ctx.event.metadata?.actor_user_id;
+  if (typeof autor !== "string") return null;
+  const fila = Array.isArray(config.fila) ? (config.fila as Array<{ user_id?: unknown; pausado?: unknown }>) : [];
+  return fila.some((p) => p?.user_id === autor && p?.pausado !== true) ? autor : null;
+}
+
 async function execute(ctx: ActionCtx, config: Record<string, unknown>): Promise<ActionResultDetail> {
   if (config.modo === "rodizio") {
     const lead = ctx.context.lead as { id: string } | undefined;
     if (!lead) return { type: "assign_owner", status: "skipped", detail: { reason: "missing_input" } };
+    const autor = quemMoveuNaFila(ctx, config);
+    if (autor) {
+      const r = await atribuirPessoa(ctx, autor, lead.id);
+      // Não deu para dar a quem moveu (saiu da equipe, virou viewer, banco fora):
+      // o card não fica sem dono por isso — a vez do rodízio decide.
+      if (r.status === "success") {
+        return { ...r, detail: { ...r.detail, explicacao: "Ficou com quem moveu o card." } };
+      }
+    }
     return executarRodizio(ctx, lead.id);
   }
   const userId = typeof config.user_id === "string" ? config.user_id : null;
   const lead = ctx.context.lead as { id: string } | undefined;
   if (!userId || !lead) return { type: "assign_owner", status: "skipped", detail: { reason: "missing_input" } };
+  return atribuirPessoa(ctx, userId, lead.id);
+}
 
+async function atribuirPessoa(ctx: ActionCtx, userId: string, leadId: string): Promise<ActionResultDetail> {
   const { data: member, error: erroDaConsulta } = await ctx.admin
     .from("user_organizations")
     .select("user_id, role")
@@ -116,7 +143,7 @@ async function execute(ctx: ActionCtx, config: Record<string, unknown>): Promise
       assigned_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     })
-    .eq("id", lead.id)
+    .eq("id", leadId)
     .eq("organization_id", ctx.organizationId);
   if (error) return { type: "assign_owner", status: "failed", error: error.message };
   return { type: "assign_owner", status: "success", detail: { user_id: userId } };

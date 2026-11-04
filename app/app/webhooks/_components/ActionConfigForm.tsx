@@ -38,7 +38,7 @@ import { CaretDown, CaretUp, Pause, Play, X } from "@/lib/ui/icons";
  */
 export type ConfigDoAtribuir =
   | { modo?: "fixo"; user_id: string }
-  | { modo: "rodizio"; fila: Array<{ user_id: string; pausado: boolean }> };
+  | { modo: "rodizio"; fila: Array<{ user_id: string; pausado: boolean }>; preferir_quem_moveu?: boolean };
 
 export type ActionItem =
   | { type: "create_or_move_lead"; config: { pipeline_id: string; stage_id: string } }
@@ -685,7 +685,8 @@ function AssignOwnerForm({ config, onChange }: FormProps<ConfigDoAtribuir>) {
   }
 
   const fila = config.fila;
-  const mudarFila = (nova: typeof fila) => onChange({ modo: "rodizio", fila: nova });
+  // `...config` mantém a preferência por quem moveu ao mexer na fila.
+  const mudarFila = (nova: typeof fila) => onChange({ ...config, modo: "rodizio", fila: nova });
   const trocar = (de: number, para: number) => {
     const nova = [...fila];
     const [pessoa] = nova.splice(de, 1);
@@ -795,6 +796,18 @@ function AssignOwnerForm({ config, onChange }: FormProps<ConfigDoAtribuir>) {
           </Select>
         </div>
       ) : null}
+      <div className="flex items-center justify-between gap-3 rounded-md border p-3">
+        <div className="space-y-0.5">
+          <Label>{t("Quem moveu o card fica com ele")}</Label>
+          <p className="text-xs text-muted-foreground">
+            {t("Se quem arrastou o card está na fila, o card fica com essa pessoa. Movimentos automáticos e de quem está fora da fila seguem a vez do rodízio.")}
+          </p>
+        </div>
+        <Switch
+          checked={config.preferir_quem_moveu === true}
+          onCheckedChange={(v) => onChange({ ...config, preferir_quem_moveu: v ? true : undefined })}
+        />
+      </div>
     </div>
   );
 }

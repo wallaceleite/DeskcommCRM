@@ -257,6 +257,8 @@ export const configDoAtribuirSchema = z.discriminatedUnion("modo", [
           vistos.add(pessoa.user_id);
         }
       }),
+    // Fork: quem da fila moveu o card à mão fica com ele (ver assign-owner.ts).
+    preferir_quem_moveu: z.boolean().optional(),
   }),
 ]);
 

@@ -6026,6 +6026,10 @@ export const DICIONARIO: Traducoes = {
     es: "Cómo el otro sistema verifica la firma y reconoce los reenvíos: guía de integración en docs/integracao/webhooks-de-saida.md, en la documentación del proyecto.",
   },
   "Incluir o responsável no corpo": { es: "Incluir al responsable en el cuerpo" },
+  "Quem moveu o card fica com ele": { es: "Quien movió la tarjeta se queda con ella" },
+  "Se quem arrastou o card está na fila, o card fica com essa pessoa. Movimentos automáticos e de quem está fora da fila seguem a vez do rodízio.": {
+    es: "Si quien arrastró la tarjeta está en la fila, la tarjeta queda con esa persona. Los movimientos automáticos y los de quien está fuera de la fila siguen el turno de la rotación.",
+  },
   "Padrão: o aviso não diz quem atende. Ligue só se o outro sistema precisar do nome da equipe.": {
     es: "Por defecto, el aviso no dice quién atiende. Actívalo solo si el otro sistema necesita el nombre del equipo.",
   },
