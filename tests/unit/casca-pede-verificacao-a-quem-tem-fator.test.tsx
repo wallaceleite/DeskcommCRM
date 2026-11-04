@@ -62,7 +62,11 @@ vi.mock("next/headers", () => ({
 vi.mock("@supabase/ssr", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@supabase/ssr")>()),
   createServerClient: () => ({
-    auth: { getUser: async () => ({ data: { user: { id: U } }, error: null }) },
+    auth: {
+      getUser: async () => ({ data: { user: { id: U } }, error: null }),
+      // Fork: o portão do proxy confere a assinatura localmente (ver proxy.ts).
+      getClaims: async () => ({ data: { claims: { sub: U } }, error: null }),
+    },
     rpc: async () => ({ data: true, error: null }),
   }),
 }));
