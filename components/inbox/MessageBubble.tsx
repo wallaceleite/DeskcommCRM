@@ -17,6 +17,7 @@ import type { Message } from "@/lib/types/messaging";
 import type { ReacaoNoBalao } from "@/lib/inbox/reacoes-no-fio";
 import { lerRemetenteDeGrupo, rotuloDoRemetente } from "@/lib/messaging/remetente-de-grupo";
 import { motivoDaFalhaDaMensagem } from "@/lib/inbox/motivo-da-falha";
+import { tiqueDaMensagem } from "@/lib/inbox/tique-da-mensagem";
 import { CitationButton } from "@/components/ai/CitationButton";
 import { MediaRenderer } from "@/components/inbox/media/MediaRenderer";
 import { MediaUnavailable } from "@/components/inbox/media/MediaUnavailable";
@@ -537,7 +538,7 @@ export function MessageBubble({
           {showCitationButton && (
             <CitationButton citations={citations} messageId={message.id} />
           )}
-          {isOutbound && !isFailed && <AckIndicator status={message.status} paradaSemConexao={paradaSemConexao}
+          {isOutbound && !isFailed && <AckIndicator status={tiqueDaMensagem(message) ?? message.status} paradaSemConexao={paradaSemConexao}
             saiSozinha={SAI_SOZINHA_QUANDO_VOLTAR.has(message.sent_via)} t={t} />}
           {isFailed && (
             // Provider local: o painel do inbox não tem TooltipProvider ancestral e

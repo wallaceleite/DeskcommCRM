@@ -60,6 +60,32 @@ function msg(over: Partial<Message> = {}): Message {
   };
 }
 
+// Fork: o número oficial deixa `status` em "sent" e grava a entrega e a leitura
+// nas datas (`lib/channels/meta/status-update.ts`). O balão mostrava ✓ para sempre.
+describe("MessageBubble — tiques do número oficial", () => {
+  it("entregue pela data → ✓✓", () => {
+    render(<MessageBubble message={msg({ delivered_at: "2026-09-08T12:00:05.000Z" })} />);
+    expect(screen.getByLabelText("Entregue")).toBeInTheDocument();
+  });
+
+  it("lida pela data → ✓✓ azul", () => {
+    render(
+      <MessageBubble
+        message={msg({
+          delivered_at: "2026-09-08T12:00:05.000Z",
+          read_at: "2026-09-08T12:01:00.000Z",
+        })}
+      />,
+    );
+    expect(screen.getByLabelText("Lida")).toHaveClass("text-blue-400");
+  });
+
+  it("sem data → ✓ enviada", () => {
+    render(<MessageBubble message={msg()} />);
+    expect(screen.getByLabelText("Enviada")).toBeInTheDocument();
+  });
+});
+
 describe("MessageBubble — ações sobre mensagem própria", () => {
   it("edita texto recente e confirma a exclusão para todos", async () => {
     const user = userEvent.setup();
