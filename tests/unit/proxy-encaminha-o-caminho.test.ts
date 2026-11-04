@@ -14,7 +14,11 @@ import { cabecalhosQueOProxyEntrega } from "./helpers/cabecalhos-do-proxy";
  */
 vi.mock("@supabase/ssr", () => ({
   createServerClient: () => ({
-    auth: { getUser: async () => ({ data: { user: { id: "u-1" } }, error: null }) },
+    auth: {
+      getUser: async () => ({ data: { user: { id: "u-1" } }, error: null }),
+      // Fork: o portão confere a assinatura localmente (ver proxy.ts).
+      getClaims: async () => ({ data: { claims: { sub: "u-1" } }, error: null }),
+    },
   }),
 }));
 

@@ -93,9 +93,18 @@ export async function proxy(request: NextRequest) {
   );
 
   // Validate JWT server-side (NEVER use getSession on backend per CLAUDE.md).
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  //
+  // Fork: o PORTÃO confere a assinatura do JWT localmente (`getClaims`: chave
+  // pública do projeto, em cache de 10 min no supabase-js) em vez de perguntar
+  // ao servidor de auth a cada requisição. Era uma ida ao Supabase por pedido —
+  // a Caixa de entrada abre ~20 de uma vez, e a fila de conferências deixava até
+  // rota trivial em 1 s. Quem decide acesso a dado continua sendo o `getUser()`
+  // de cada rota e do layout (`loadAuthUser`). Projeto com chave simétrica (HS256)
+  // faz o supabase-js cair no `getUser()` sozinho: nunca fica mais fraco que antes.
+  const inicioDoPortao = Date.now();
+  const { data: dadosDoJwt } = await supabase.auth.getClaims();
+  const user = dadosDoJwt?.claims?.sub ? dadosDoJwt.claims : null;
+  response.headers.set("Server-Timing", `portao;dur=${Date.now() - inicioDoPortao}`);
 
   if (!user) {
     // API routes must respond with JSON envelope (contract: {error:{code,message}})
