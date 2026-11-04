@@ -10,6 +10,18 @@ import { intervaloDaColuna } from "@/lib/kanban/selecao";
 import { formatSomaPorMoeda, formatValorDoNegocio, MOEDA_PADRAO, somaPorMoeda } from "@/lib/money";
 import { KanbanCard, type GestoDeSelecao } from "./KanbanCard";
 
+/**
+ * Fork: a coluna DESENHA os primeiros N cards e oferece "Mostrar mais".
+ *
+ * Os dados continuam inteiros (filtros, contagem, total e seleção da etapa valem
+ * para todos); só o desenho é que para. Uma etapa com 878 cards montava 32 mil
+ * elementos e travava a tela a cada recarga. O corte é sempre do começo da
+ * lista, então o índice que o arraste devolve é o mesmo da lista inteira e a
+ * posição calculada no `KanbanBoard` não muda.
+ */
+export const CARDS_DESENHADOS = 50;
+const MAIS_CARDS = 100;
+
 interface StageColumnProps {
   stage: Stage;
   leads: Lead[];
@@ -104,6 +116,10 @@ export function StageColumn({
           (l) => (l.value_cents == null ? null : Math.round((l.value_cents * probDaColuna) / 100)),
           moedaDoLead,
         );
+
+  const [limite, setLimite] = useState(CARDS_DESENHADOS);
+  const desenhados = leads.length > limite ? leads.slice(0, limite) : leads;
+  const restantes = leads.length - desenhados.length;
 
   const idsVisiveis = leads.map((l) => l.id);
   const selecionadosAqui = idsVisiveis.filter((id) => selectedLeadIds?.has(id)).length;
@@ -250,7 +266,7 @@ export function StageColumn({
               snapshot.isDraggingOver && "bg-accent/5",
             )}
           >
-            {leads.map((lead, idx) => (
+            {desenhados.map((lead, idx) => (
               <KanbanCard
                 key={lead.id}
                 card={buildCardInput(lead, {
@@ -271,6 +287,16 @@ export function StageColumn({
               />
             ))}
             {provided.placeholder}
+            {restantes > 0 && (
+              <button
+                type="button"
+                onClick={() => setLimite((atual) => atual + MAIS_CARDS)}
+                className="rounded-md border border-dashed border-border px-3 py-2 text-[11px] font-medium text-text-muted hover:bg-surface hover:text-text"
+                data-mostrar-mais-cards
+              >
+                {t("Mostrar mais")} ({restantes})
+              </button>
+            )}
             {leads.length === 0 && !snapshot.isDraggingOver && (
               <div className="flex h-20 items-center justify-center text-[11px] text-text-muted">
                 {t("vazio")}

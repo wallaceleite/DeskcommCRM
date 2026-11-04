@@ -26,6 +26,7 @@ import {
 import type { LeadCandidate } from "@/lib/leads/active-lead";
 import { anexarDadosDoContato, type LinhaDoContatoNoQuadro } from "@/lib/kanban/dados-do-contato";
 import { anexarTarefasAosNegocios, type LinhaDaTarefaNoQuadro } from "@/lib/kanban/tarefas-no-quadro";
+import { juntarCampos, lerEmPaginas } from "@/lib/kanban/carga-do-quadro";
 import { buscaEmLotes } from "@/lib/supabase/em-lotes";
 import { createClient } from "@/lib/supabase/server";
 import { idsDeContatosPessoais } from "@/app/api/v1/conversations/_handler";
@@ -475,9 +476,40 @@ async function withTarefas(
   };
 }
 
+/**
+ * Fork: as linhas do funil em páginas (ver `lib/kanban/carga-do-quadro.ts`) — o
+ * PostgREST corta em 1000 sem erro. `id` desempata a ordem: sem ele, duas
+ * páginas podiam repetir ou pular o mesmo card.
+ */
+function todosOsNegocios(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  pipelineId: string,
+) {
+  return lerEmPaginas<Lead>((de, ate) =>
+    supabase
+      .from("crm_leads")
+      .select("*")
+      .eq("pipeline_id", pipelineId)
+      .neq("status", "archived")
+      .order("position_in_stage")
+      .order("id")
+      .range(de, ate),
+  );
+}
+
 export async function GET(_req: NextRequest, ctx: RouteCtx): Promise<Response> {
   const requestId = randomUUID();
   const { id: pipelineId } = await ctx.params;
+  // Fork: tempo por fase no header `Server-Timing` — a aba Rede do navegador
+  // mostra onde o quadro gasta, sem log e sem dado de cliente.
+  const inicio = Date.now();
+  const fases: string[] = [];
+  let marco = inicio;
+  const fase = (nome: string) => {
+    const agora = Date.now();
+    fases.push(`${nome};dur=${agora - marco}`);
+    marco = agora;
+  };
 
   const supabase = await createClient();
   const {
@@ -487,8 +519,7 @@ export async function GET(_req: NextRequest, ctx: RouteCtx): Promise<Response> {
   if (authErr || !user) {
     return fail("unauthenticated", "Auth required.", 401, { requestId });
   }
-  const authUser = await loadAuthUser();
-  const t = (texto: string) => traduzir(texto, authUser?.idioma ?? "pt-BR");
+  fase("auth");
 
   const [
     { data: pipeline, error: pipelineErr },
@@ -502,100 +533,102 @@ export async function GET(_req: NextRequest, ctx: RouteCtx): Promise<Response> {
       .eq("pipeline_id", pipelineId)
       .eq("is_archived", false)
       .order("position"),
-    supabase
-      .from("crm_leads")
-      .select("*")
-      .eq("pipeline_id", pipelineId)
-      .neq("status", "archived")
-      .order("position_in_stage"),
+    todosOsNegocios(supabase, pipelineId),
   ]);
+  fase("negocios");
 
   if (pipelineErr) return fail("internal_error", pipelineErr.message, 500, { requestId });
   if (stagesErr) return fail("internal_error", stagesErr.message, 500, { requestId });
   if (leadsErr) return fail("internal_error", leadsErr.message, 500, { requestId });
-  if (!pipeline) return fail("resource_not_found", t("Pipeline não encontrado."), 404, { requestId });
+  if (!pipeline) {
+    // Fork: o idioma só serve a esta frase — carregá-lo em toda leitura do
+    // quadro custava mais quatro consultas por carga.
+    const authUser = await loadAuthUser();
+    return fail(
+      "resource_not_found",
+      traduzir("Pipeline não encontrado.", authUser?.idioma ?? "pt-BR"),
+      404,
+      { requestId },
+    );
+  }
+  const organizationId = (pipeline as Pipeline).organization_id;
 
   // Contato pessoal some do board mas a linha continua no banco (spec 21, etapa
   // 8, decisão 2 — critério 4): o card não é listado e volta ao desmarcar, com
   // o histórico intacto. Filtro em memória sobre a lista já lida: o board não
   // pagina, então nada se perde por filtrar depois de ler. NUNCA `delete`.
-  const pessoais = await idsDeContatosPessoais(
-    supabase,
-    (pipeline as Pipeline).organization_id,
-  );
+  const [pessoais, { data: pipelinePadrao }] = await Promise.all([
+    idsDeContatosPessoais(supabase, organizationId),
+    supabase
+      .from("crm_pipelines")
+      .select("id")
+      .eq("organization_id", organizationId)
+      .eq("is_default", true)
+      .maybeSingle(),
+  ]);
   const leadsVisiveis =
     pessoais.length > 0
       ? ((leads ?? []) as Lead[]).filter(
           (l) => l.contact_id === null || !pessoais.includes(l.contact_id),
         )
       : ((leads ?? []) as Lead[]);
+  fase("pessoais");
 
-  const leadsWithOwner = await withOwnerAgents(
-    supabase,
-    (pipeline as Pipeline).organization_id,
-    leadsVisiveis,
-  );
+  // Fork: dono, próxima ação, score e tarefas não dependem uns dos outros —
+  // em fila eram quatro idas ao banco somadas; juntas, custam a mais lenta.
+  const [leadsWithOwner, leadsComAcao, leadsComScore, leadsComTarefas] = await Promise.all([
+    withOwnerAgents(supabase, organizationId, leadsVisiveis),
+    withNextActions(
+      supabase,
+      organizationId,
+      leadsVisiveis,
+      (pipelinePadrao as { id: string } | null)?.id ?? null,
+    ),
+    withScores(supabase, organizationId, leadsVisiveis),
+    withTarefas(supabase, organizationId, leadsVisiveis),
+  ]);
   if (leadsWithOwner.error) {
     return fail("internal_error", leadsWithOwner.error, 500, { requestId });
   }
-
-  const { data: pipelinePadrao } = await supabase
-    .from("crm_pipelines")
-    .select("id")
-    .eq("organization_id", (pipeline as Pipeline).organization_id)
-    .eq("is_default", true)
-    .maybeSingle();
-
-  const leadsComAcao = await withNextActions(
-    supabase,
-    (pipeline as Pipeline).organization_id,
-    leadsWithOwner.leads,
-    (pipelinePadrao as { id: string } | null)?.id ?? null,
-  );
   if (leadsComAcao.error) {
     return fail("internal_error", leadsComAcao.error, 500, { requestId });
   }
-
-  const leadsComScore = await withScores(
-    supabase,
-    (pipeline as Pipeline).organization_id,
-    leadsComAcao.leads,
-  );
   if (leadsComScore.error) {
     return fail("internal_error", leadsComScore.error, 500, { requestId });
   }
-
-  // As tarefas entram NO MEIO da cadeia, e não no fim: a resposta continua
-  // saindo de `withMarcadoresDoContato`, a última etapa que as cercas do quadro
-  // vigiam (`kanban-atalho-conversa`, `funil-mostra-dados-do-cliente`,
-  // `funil-filtro-de-tag-le-as-duas-caixas`). A ordem não muda o resultado: cada
-  // etapa só acrescenta o próprio campo ao lead.
-  const leadsComTarefas = await withTarefas(
-    supabase,
-    (pipeline as Pipeline).organization_id,
-    leadsComScore.leads,
-  );
   if (leadsComTarefas.error) {
     return fail("internal_error", leadsComTarefas.error, 500, { requestId });
   }
+  const leadsEnriquecidos = juntarCampos(leadsVisiveis, [
+    leadsWithOwner.leads,
+    leadsComAcao.leads,
+    leadsComScore.leads,
+    leadsComTarefas.leads,
+  ]);
+  fase("enriquecimento");
 
+  // A resposta continua saindo de `withMarcadoresDoContato`, a última etapa que
+  // as cercas do quadro vigiam (`kanban-atalho-conversa`,
+  // `funil-mostra-dados-do-cliente`, `funil-filtro-de-tag-le-as-duas-caixas`).
   const leadsComConversa = await withConversas(
     supabase,
-    (pipeline as Pipeline).organization_id,
-    leadsComTarefas.leads,
+    organizationId,
+    leadsEnriquecidos,
   );
   if (leadsComConversa.error) {
     return fail("internal_error", leadsComConversa.error, 500, { requestId });
   }
+  fase("conversas");
 
   const leadsComMarcadores = await withMarcadoresDoContato(
     supabase,
-    (pipeline as Pipeline).organization_id,
+    organizationId,
     leadsComConversa.leads,
   );
   if (leadsComMarcadores.error) {
     return fail("internal_error", leadsComMarcadores.error, 500, { requestId });
   }
+  fase("contatos");
 
   const board: BoardData = {
     pipeline: pipeline as Pipeline,
@@ -603,5 +636,6 @@ export async function GET(_req: NextRequest, ctx: RouteCtx): Promise<Response> {
     leads: leadsComMarcadores.leads,
   };
 
-  return ok(board, { requestId });
+  fases.push(`total;dur=${Date.now() - inicio}`);
+  return ok(board, { requestId, headers: { "Server-Timing": fases.join(", ") } });
 }

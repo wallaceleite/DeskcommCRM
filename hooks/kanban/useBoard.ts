@@ -39,6 +39,22 @@ async function fetchBoard(pipelineId: string): Promise<BoardData> {
  */
 const PULSE_MS = 1_200;
 
+/**
+ * Fork: a rajada vira UMA recarga. Cada mensagem de vendedor e cada atividade
+ * carimbam o lead e chegam aqui como evento; recarregar o quadro inteiro por
+ * evento refazia a carga de 2–5 s várias vezes por minuto. O primeiro evento
+ * agenda, os seguintes dentro da janela entram na mesma recarga — nunca adia
+ * além disso, então a tela atualiza no máximo RECARGA_MS depois.
+ */
+const RECARGA_MS = 1_500;
+
+/**
+ * Fork: a conferência de segurança do QUADRO a cada 3 min, não 45 s. Ela relê o
+ * funil inteiro (a carga mais cara do produto) e o realtime já entrega o que
+ * muda; continua conferindo ao voltar para a aba, que é onde o canal costuma cair.
+ */
+const SEGURANCA_DO_QUADRO_MS = 180_000;
+
 /** O id do lead dentro do payload do postgres_changes (new, ou old no delete). */
 function idDoEvento(payload: unknown): string | null {
   if (!payload || typeof payload !== "object") return null;
@@ -74,6 +90,7 @@ export function useBoard(pipelineId: string | null) {
    */
   const [pulses, setPulses] = useState<Map<string, number>>(new Map());
   const timers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const recarga = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const query = useQuery({
     queryKey,
@@ -85,8 +102,13 @@ export function useBoard(pipelineId: string | null) {
     (payload: unknown) => {
       // Conservative: invalidate the board on any change. Optimistic patches
       // arrive faster via useMoveCard's onMutate; this just reconciles
-      // cross-user changes within ~250ms.
-      qc.invalidateQueries({ queryKey });
+      // cross-user changes — agrupadas em RECARGA_MS (fork).
+      if (!recarga.current) {
+        recarga.current = setTimeout(() => {
+          recarga.current = null;
+          void qc.invalidateQueries({ queryKey });
+        }, RECARGA_MS);
+      }
 
       const leadId = idDoEvento(payload);
       // Janela, não marca gasta por evento: uma ação minha chega aqui em DUAS
@@ -154,6 +176,8 @@ export function useBoard(pipelineId: string | null) {
     return () => {
       for (const t of pendentes.values()) clearTimeout(t);
       pendentes.clear();
+      if (recarga.current) clearTimeout(recarga.current);
+      recarga.current = null;
     };
   }, []);
 
@@ -174,6 +198,7 @@ export function useBoard(pipelineId: string | null) {
       return `${leads.length}:${maior}`;
     },
     ultimaEntrega,
+    intervaloMs: SEGURANCA_DO_QUADRO_MS,
     enabled: !!pipelineId,
   });
 
