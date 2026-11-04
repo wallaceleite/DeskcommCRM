@@ -10,7 +10,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api/client";
 import { useSendMessage } from "@/hooks/inbox/useSendMessage";
 import { PreviaDoModelo } from "@/components/channels/PreviaDoModelo";
-import { renderTemplatePreview } from "@/lib/channels/meta/render-template";
+import { renderTemplateBody, renderTemplatePreview } from "@/lib/channels/meta/render-template";
 import { fonteDeTemplates, rotaDeTemplates } from "@/lib/channels/templates-fonte";
 import { lerConteudo } from "@/lib/channels/template-conteudo";
 import { cn } from "@/lib/utils";
@@ -229,7 +229,13 @@ export function JanelaFechadaAviso({
         //
         // O texto renderizado é também o que a conversa mostra depois: é o
         // mesmo caminho que o agente já usa quando manda modelo.
-        body: textoDoModelo(atual),
+        // Fork: com os VALORES — o cru gravava "Olá, {{1}}!" no histórico
+        // enquanto o cliente recebia o nome, e o vendedor reenviava.
+        body:
+          renderTemplateBody(atual.components ?? [], valores, {
+            name: atual.name,
+            language: atual.language,
+          }) || textoDoModelo(atual),
         template_values: valores,
       },
       {

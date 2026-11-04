@@ -37,6 +37,14 @@ vi.mock("@tanstack/react-query", () => ({
             savedValues: salvos.valores,
             components: [{ type: "BODY", text: "Aviso automático." }],
           },
+          {
+            name: "reconexao_nome",
+            language: "pt_BR",
+            status: "APPROVED",
+            slots: [{ key: "1", expects: "text", onde: "corpo", valueKey: "1" }],
+            savedValues: {},
+            components: [{ type: "BODY", text: "Olá, {{1}}! Tudo bem?" }],
+          },
         ],
       },
     },
@@ -109,6 +117,20 @@ describe("JanelaFechadaAviso", () => {
       template_name: "aviso_debriefing_adv",
       template_language: "pt_BR",
       template_values: { "header:1": "https://exemplo.com/capa.jpg" },
+    });
+  });
+
+  it("fork: o histórico grava o texto preenchido, não o {{1}} cru", async () => {
+    const user = userEvent.setup();
+    montar();
+
+    await user.selectOptions(screen.getByRole("combobox"), "reconexao_nome|pt_BR");
+    await user.type(screen.getByRole("textbox"), "Talita");
+    await user.click(screen.getByRole("button", { name: /Enviar modelo/ }));
+
+    expect(mutate.mock.calls[0]![0]).toMatchObject({
+      template_values: { "1": "Talita" },
+      body: "Olá, Talita! Tudo bem?",
     });
   });
 
