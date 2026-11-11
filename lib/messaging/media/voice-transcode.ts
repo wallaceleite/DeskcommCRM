@@ -108,19 +108,23 @@ function ehWebm(base: string): boolean {
  * Sempre: `webm` com opus (o Chrome) — o resto ou já serve, ou não é nosso
  * problema resolver aqui.
  *
- * Com `notaDeVoz` (o gravador do composer marcou): TODO áudio que não é ogg. O
- * iPhone grava `audio/mp4` (AAC), e os canais oficiais só aceitam opus como
- * nota de voz. A regra é "não é ogg", e não uma lista de mimes do Safari,
- * porque o mime que cada versão do iOS anuncia muda. Sem a marca, um m4a
- * enviado por token segue intacto: uma música não pode virar opus mono de 24k.
+ * Com `notaDeVoz` (o gravador do composer marcou): TODO áudio, ogg inclusive.
+ * O canal oficial exige ogg/opus MONO para a nota de voz, e o gravador do
+ * browser entrega o que o microfone dá: estéreo e a ~160 kbps no Chrome
+ * (medido: 30 s viraram 600 KB, 2 canais). A Meta aceita e entrega, e o
+ * WhatsApp do cliente mostra a bolha que não toca. Por isso a nota de voz é
+ * sempre normalizada, e não só quando o container está errado. Sem a marca, um
+ * m4a enviado por token segue intacto: uma música não pode virar opus mono de 24k.
  */
 export function precisaTranscodificar(mime: string, notaDeVoz = false): boolean {
   const base = baseDoMime(mime);
   if (ehWebm(base)) return true;
   if (!notaDeVoz) return false;
-  const ehAudio = base.startsWith("audio/") || base.startsWith("video/");
-  return ehAudio && base !== "audio/ogg" && base !== "audio/opus";
+  return base.startsWith("audio/") || base.startsWith("video/");
 }
+
+/** O formato da nota de voz que o WhatsApp toca: opus mono, 48 kHz, perfil de voz. */
+const NOTA_DE_VOZ_OPUS = ["-c:a", "libopus", "-b:a", "24k", "-ac", "1", "-ar", "48000", "-application", "voip"];
 
 export interface Transcodificacao {
   buffer: Buffer;
@@ -158,8 +162,8 @@ async function runFfmpeg(args: string[], cwd: string): Promise<void> {
 }
 
 /**
- * Nota de voz → Ogg/Opus: o webm só troca de container; o resto marcado como
- * nota de voz (o AAC do iPhone) é reencodado em opus.
+ * Nota de voz → Ogg/Opus mono: tudo que o gravador marca como nota de voz é
+ * reencodado; o webm sem a marca só troca de container.
  *
  * Falha devolve o original INTACTO, não erro: um áudio que talvez não saia é
  * melhor que um envio que morre antes de tentar — e o canal que aceita webm
@@ -182,12 +186,10 @@ export async function transcodificarNotaDeVoz(
     const entrada = join(dir, "in.audio");
     const saida = join(dir, "out.ogg");
     await writeFile(entrada, input.buffer);
-    // webm: `-c:a copy` — o codec já é opus dos dois lados, reencodar custaria
-    // tempo e qualidade para chegar ao mesmo lugar. O resto (o AAC do iPhone)
-    // não é opus: copiar o container não serve, tem de reencodar.
-    const codec = ehWebm(baseDoMime(input.mime))
-      ? ["-c:a", "copy"]
-      : ["-c:a", "libopus", "-b:a", "24k", "-ac", "1", "-ar", "48000"];
+    // Nota de voz: SEMPRE reencodada em opus mono. Copiar o container do webm
+    // levava adiante o estéreo e o bitrate do microfone, e a bolha chegava sem
+    // tocar. Só o webm SEM a marca (anexo, não nota de voz) troca o container.
+    const codec = input.notaDeVoz ? NOTA_DE_VOZ_OPUS : ["-c:a", "copy"];
     await executar([...ENTRADA_ACEITA, "-i", entrada, "-vn", ...codec, "-f", "ogg", saida], dir);
     const buffer = await readFile(saida);
     if (buffer.length === 0) return { buffer: input.buffer, mime: input.mime, convertido: false };

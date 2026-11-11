@@ -160,8 +160,11 @@ describe("nota de voz gravada no iPhone (F2)", () => {
     }
   });
 
-  it("com notaDeVoz, ogg continua sem conversão — já é o destino", () => {
-    expect(precisaTranscodificar("audio/ogg;codecs=opus", true)).toBe(false);
+  it("com notaDeVoz, ogg TAMBÉM é normalizado — o container certo não garante mono", () => {
+    // O Firefox (e o Chrome que já grava ogg) entregam opus no container
+    // certo, mas com os canais do microfone. A nota de voz exige mono.
+    expect(precisaTranscodificar("audio/ogg;codecs=opus", true)).toBe(true);
+    expect(precisaTranscodificar("audio/ogg;codecs=opus")).toBe(false);
   });
 
   it("com notaDeVoz, o que não é áudio não vira ffmpeg à toa", () => {
@@ -185,9 +188,19 @@ describe("nota de voz gravada no iPhone (F2)", () => {
     expect(r.buffer.toString()).toBe("ogg-opus");
   });
 
-  it("webm com notaDeVoz continua trocando só o container", async () => {
+  it("webm com notaDeVoz é REENCODADO em mono — copiar levava o estéreo do Chrome", async () => {
+    // Medido: o `-c:a copy` saía com 2 canais e ~160 kbps, e a bolha chegava
+    // no WhatsApp do cliente sem tocar.
     const run = vi.fn(async (_args: string[], _cwd: string) => {});
     await transcodificarNotaDeVoz({ ...webm, notaDeVoz: true }, { run });
+    const args = run.mock.calls[0]?.[0] ?? [];
+    expect(args).toEqual(expect.arrayContaining(["-c:a", "libopus", "-ac", "1", "-ar", "48000"]));
+    expect(args).not.toContain("copy");
+  });
+
+  it("webm SEM a marca segue só trocando o container", async () => {
+    const run = vi.fn(async (_args: string[], _cwd: string) => {});
+    await transcodificarNotaDeVoz(webm, { run });
     expect(run.mock.calls[0]?.[0]).toContain("copy");
   });
 
