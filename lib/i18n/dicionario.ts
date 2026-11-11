@@ -8276,6 +8276,20 @@ export const DICIONARIO: Traducoes = {
   "Não consegui acessar o microfone. Verifique a permissão do navegador.": {
     es: "No pude acceder al micrófono. Verifica el permiso del navegador.",
   },
+  "O navegador está bloqueando o microfone deste site. Clique no cadeado ao lado do endereço, permita o Microfone e recarregue a página. Se já estiver permitido, libere o microfone para o navegador nas configurações de privacidade do computador.":
+    {
+      es: "El navegador está bloqueando el micrófono de este sitio. Haz clic en el candado junto a la dirección, permite el Micrófono y recarga la página. Si ya está permitido, habilita el micrófono para el navegador en la configuración de privacidad del equipo.",
+    },
+  "Nenhum microfone encontrado neste computador. Conecte um fone com microfone e tente de novo.": {
+    es: "No se encontró ningún micrófono en este equipo. Conecta unos auriculares con micrófono e inténtalo de nuevo.",
+  },
+  "O microfone está sendo usado por outro programa (Meet, Zoom, WhatsApp Desktop). Feche-o e tente de novo.":
+    {
+      es: "Otro programa está usando el micrófono (Meet, Zoom, WhatsApp Desktop). Ciérralo e inténtalo de nuevo.",
+    },
+  "Este navegador não grava áudio nesta página. Use o Google Chrome atualizado.": {
+    es: "Este navegador no graba audio en esta página. Usa Google Chrome actualizado.",
+  },
   "Enviar contato": { es: "Enviar contacto" },
   "Escolha alguém da base ou informe nome e telefone — como no WhatsApp.": {
     es: "Elige a alguien de la base o indica nombre y teléfono — como en WhatsApp.",

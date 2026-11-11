@@ -16,6 +16,8 @@ vi.mock("@/hooks/inbox/useUploadMedia", () => ({
 vi.mock("@/hooks/inbox/useSendMessage", () => ({
   useSendMessage: () => ({ mutate: sendMock, isPending: false }),
 }));
+const toastErrorMock = vi.fn();
+vi.mock("sonner", () => ({ toast: { error: (...a: unknown[]) => toastErrorMock(...a) } }));
 
 import { AudioRecorder } from "@/components/inbox/composer/AudioRecorder";
 
@@ -46,6 +48,7 @@ describe("AudioRecorder", () => {
   beforeEach(() => {
     uploadMock.mockClear();
     sendMock.mockClear();
+    toastErrorMock.mockClear();
     FakeRecorder.instances = [];
     trackStopMock = vi.fn();
     vi.stubGlobal("MediaRecorder", FakeRecorder as unknown as typeof MediaRecorder);
@@ -170,5 +173,32 @@ describe("AudioRecorder", () => {
     });
     await waitFor(() => expect(uploadMock).toHaveBeenCalled());
     expect(uploadMock.mock.calls[0]![0]).toMatchObject({ filename: "ptt.webm", notaDeVoz: true });
+  });
+
+  /**
+   * Permissão bloqueada aparecia como "Erro inesperado. Tente novamente.": o
+   * catch mandava um Error cru a showApiError, que só entende ApiError. Quem
+   * clicava no microfone não tinha como saber que o conserto era o cadeado.
+   */
+  it("permissão bloqueada mostra o motivo e o código, não 'Erro inesperado'", async () => {
+    vi.mocked(navigator.mediaDevices.getUserMedia).mockRejectedValue(
+      new DOMException("Permission denied", "NotAllowedError"),
+    );
+    render(<AudioRecorder conversationId="conv-1" />);
+    fireEvent.click(screen.getByRole("button", { name: /gravar áudio/i }));
+    await waitFor(() => expect(toastErrorMock).toHaveBeenCalledOnce());
+    const [mensagem, opcoes] = toastErrorMock.mock.calls[0]!;
+    expect(mensagem).toMatch(/bloqueando o microfone/);
+    expect(mensagem).not.toMatch(/inesperado/i);
+    expect(opcoes).toMatchObject({ description: "NotAllowedError" });
+    expect(screen.getByRole("button", { name: /gravar áudio/i })).toBeInTheDocument();
+  });
+
+  it("sem mediaDevices (http://) diz que o navegador não grava, sem TypeError genérico", async () => {
+    Object.defineProperty(navigator, "mediaDevices", { configurable: true, value: undefined });
+    render(<AudioRecorder conversationId="conv-1" />);
+    fireEvent.click(screen.getByRole("button", { name: /gravar áudio/i }));
+    await waitFor(() => expect(toastErrorMock).toHaveBeenCalledOnce());
+    expect(toastErrorMock.mock.calls[0]![0]).toMatch(/Google Chrome/);
   });
 });

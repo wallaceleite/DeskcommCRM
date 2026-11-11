@@ -1,6 +1,9 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import { useT } from "@/hooks/i18n/useT";
+
+import { SEM_SUPORTE_A_GRAVACAO, avisoDoMicrofone } from "./aviso-do-microfone";
 
 import { Button } from "@/components/ui/button";
 import { Microphone, PaperPlaneTilt, Trash } from "@/lib/ui/icons";
@@ -71,6 +74,11 @@ export function AudioRecorder({ conversationId, disabled }: Props) {
     startingRef.current = true;
     const generation = captureGeneration.current;
     try {
+      // Em http:// (contexto inseguro) `mediaDevices` nem existe, e a chamada
+      // estourava um TypeError sem nome útil.
+      if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+        throw Object.assign(new Error(SEM_SUPORTE_A_GRAVACAO), { name: SEM_SUPORTE_A_GRAVACAO });
+      }
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       if (generation !== captureGeneration.current) {
         stream.getTracks().forEach((track) => track.stop());
@@ -119,14 +127,13 @@ export function AudioRecorder({ conversationId, disabled }: Props) {
       recorderRef.current = rec;
       rec.start();
       setRecording(true);
-    } catch {
+    } catch (err) {
       if (generation !== captureGeneration.current) return;
       cleanupStream();
-      // permissão negada / sem mic — não gravar é o estado final; toast simples
-      const { showApiError } = await import("@/components/feedback/ApiErrorToast");
-      showApiError(
-        new Error(t("Não consegui acessar o microfone. Verifique a permissão do navegador.")),
-      );
+      // Não vai para `showApiError`: ele só entende `ApiError` e mostrava
+      // "Erro inesperado" no lugar do motivo (ver aviso-do-microfone.ts).
+      const aviso = avisoDoMicrofone(err, t);
+      toast.error(aviso.mensagem, { description: aviso.codigo, duration: 15000 });
     } finally {
       startingRef.current = false;
     }
