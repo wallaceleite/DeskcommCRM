@@ -1,4 +1,5 @@
 import { protecaoAgendaSupabase, type ProtecaoAgenda } from "@/lib/agenda/protecao-followup";
+import { buscaEmLotes } from "@/lib/supabase/em-lotes";
 import type { Role } from "@/lib/auth/types";
 /**
  * O RADAR DE RISCO, montado — a lista de demandas abertas que esfriaram.
@@ -238,25 +239,33 @@ export async function carregaRadarDeRisco(
   const nameByContact = new Map<string, string | null>();
 
   if (contactIds.length > 0) {
+    // Fork: em lotes — 500 uuids num `.in()` estouram o header de resposta do
+    // PostgREST e a consulta volta vazia sem erro visível (lib/supabase/em-lotes.ts).
     const [followups, convs, contacts] = await Promise.all([
-      admin
-        .from("cron_jobs")
-        .select("contact_id, next_run_at")
-        .eq("organization_id", organizationId)
-        .eq("kind", "at")
-        .eq("enabled", true)
-        .gt("next_run_at", nowIso)
-        .in("contact_id", contactIds),
-      admin
-        .from("conversations")
-        .select("id, contact_id, assignee_kind")
-        .eq("organization_id", organizationId)
-        .in("contact_id", contactIds),
-      admin
-        .from("contacts")
-        .select("id, name, display_name")
-        .eq("organization_id", organizationId)
-        .in("id", contactIds),
+      buscaEmLotes(contactIds, (lote) =>
+        admin
+          .from("cron_jobs")
+          .select("contact_id, next_run_at")
+          .eq("organization_id", organizationId)
+          .eq("kind", "at")
+          .eq("enabled", true)
+          .gt("next_run_at", nowIso)
+          .in("contact_id", lote),
+      ),
+      buscaEmLotes(contactIds, (lote) =>
+        admin
+          .from("conversations")
+          .select("id, contact_id, assignee_kind")
+          .eq("organization_id", organizationId)
+          .in("contact_id", lote),
+      ),
+      buscaEmLotes(contactIds, (lote) =>
+        admin
+          .from("contacts")
+          .select("id, name, display_name")
+          .eq("organization_id", organizationId)
+          .in("id", lote),
+      ),
     ]);
 
     for (const f of followups.data ?? []) {

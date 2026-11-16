@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Queryable } from "@/lib/agent-engine/queue/queue";
 import { agendaSettingsSchema } from "@/lib/schemas/settings";
 import { logger } from "@/lib/logger";
+import { IDS_POR_LOTE } from "@/lib/supabase/em-lotes";
 
 export interface CompromissoProtetor {
   id: string;
@@ -75,26 +76,34 @@ export async function protecaoAgendaSupabase(
   if (!contatos.length) return new Map();
   try {
     const appointments: CompromissoProtetor[] = [];
-    let after: string | undefined;
-    // Keyset estável: uma resposta bem-sucedida pode ter sido truncada pelo
-    // max_rows do PostgREST. Só página VAZIA prova que a leitura terminou.
-    for (;;) {
-      let query = db
-        .from("calendar_appointments")
-        .select("id,contact_id,revision,starts_at,ends_at,status")
-        .eq("organization_id", org)
-        .in("contact_id", contatos)
-        .in("status", ["pending", "confirmed"])
-        .order("id", { ascending: true })
-        .limit(500);
-      if (after) query = query.gt("id", after);
-      const page = await query;
-      if (page.error) throw page.error;
-      if (!page.data?.length) break;
-      const last = page.data[page.data.length - 1]!.id;
-      if (after && last <= after) throw new Error("agenda_page_did_not_advance");
-      appointments.push(...page.data);
-      after = last;
+    // Fork: os contatos vão em LOTES. Com centenas de uuids num `.in()` o
+    // PostgREST devolve a query inteira no header `Content-Location`, que passa
+    // do teto de 16 KB do Node; o fetch falha antes do corpo e toda a lista caía
+    // em "leitura_indisponivel" — o radar de risco quebrava a cada carga e o
+    // risk-watcher a cada 15 min (ver lib/supabase/em-lotes.ts).
+    for (let i = 0; i < contatos.length; i += IDS_POR_LOTE) {
+      const lote = contatos.slice(i, i + IDS_POR_LOTE);
+      let after: string | undefined;
+      // Keyset estável: uma resposta bem-sucedida pode ter sido truncada pelo
+      // max_rows do PostgREST. Só página VAZIA prova que a leitura terminou.
+      for (;;) {
+        let query = db
+          .from("calendar_appointments")
+          .select("id,contact_id,revision,starts_at,ends_at,status")
+          .eq("organization_id", org)
+          .in("contact_id", lote)
+          .in("status", ["pending", "confirmed"])
+          .order("id", { ascending: true })
+          .limit(500);
+        if (after) query = query.gt("id", after);
+        const page = await query;
+        if (page.error) throw page.error;
+        if (!page.data?.length) break;
+        const last = page.data[page.data.length - 1]!.id;
+        if (after && last <= after) throw new Error("agenda_page_did_not_advance");
+        appointments.push(...page.data);
+        after = last;
+      }
     }
     const organization = await db.from("organizations").select("settings").eq("id", org).single();
     if (organization.error) throw organization.error;
