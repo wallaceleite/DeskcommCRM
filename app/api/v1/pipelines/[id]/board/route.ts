@@ -16,6 +16,7 @@ import { randomUUID } from "node:crypto";
 import { type NextRequest } from "next/server";
 
 import { fail, ok } from "@/lib/api/wrappers";
+import { logger } from "@/lib/logger";
 import { loadAuthUser } from "@/lib/auth/server";
 import { traduzir } from "@/lib/i18n/dicionario";
 import {
@@ -497,6 +498,9 @@ function todosOsNegocios(
   );
 }
 
+/** Acima disto (ms) a carga do quadro é registrada no log com as fases. */
+const QUADRO_LENTO_MS = 3_000;
+
 export async function GET(_req: NextRequest, ctx: RouteCtx): Promise<Response> {
   const requestId = randomUUID();
   const { id: pipelineId } = await ctx.params;
@@ -636,6 +640,18 @@ export async function GET(_req: NextRequest, ctx: RouteCtx): Promise<Response> {
     leads: leadsComMarcadores.leads,
   };
 
-  fases.push(`total;dur=${Date.now() - inicio}`);
+  const total = Date.now() - inicio;
+  fases.push(`total;dur=${total}`);
+  // Fork: quadro lento vira linha no log com as fases. O navegador desiste aos
+  // 60s (useBoard) e o Server-Timing some junto com a resposta abortada; sem
+  // esta linha, a lentidão de um funil grande só se media lendo o banco.
+  if (total > QUADRO_LENTO_MS) {
+    logger.warn("[board] quadro lento", {
+      requestId,
+      pipelineId,
+      negocios: leadsComMarcadores.leads.length,
+      fases: fases.join(", "),
+    });
+  }
   return ok(board, { requestId, headers: { "Server-Timing": fases.join(", ") } });
 }

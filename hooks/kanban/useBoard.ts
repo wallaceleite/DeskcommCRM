@@ -15,9 +15,16 @@ import type { BoardData } from "@/lib/kanban/types";
  * and PostgREST returns PGRST116. Routing through /api/v1/pipelines/[id]/board
  * uses the server-side cookie reader, identical to every other authed query.
  */
+/** Quanto o navegador espera a carga do quadro antes de desistir. */
+export const QUADRO_TIMEOUT_MS = 60_000;
+
 async function fetchBoard(pipelineId: string): Promise<BoardData> {
+  // Fork: o quadro lê o funil INTEIRO. Num funil grande ele passa dos 10s
+  // padrão, e o navegador desistia e repetia três vezes — cada repetição
+  // recomeçando do zero no servidor — até a tela ficar presa em "carregando".
   const res = await apiClient.get<{ data: BoardData }>(
     `/api/v1/pipelines/${pipelineId}/board`,
+    { timeoutMs: QUADRO_TIMEOUT_MS },
   );
   // apiClient unwraps { data, meta } envelope already in some helpers;
   // ours returns the parsed JSON literally. Handle both shapes safely.
